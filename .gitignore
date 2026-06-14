@@ -1,8 +1,10 @@
-# 敏感数据文件
+# 数据库文件
+data/*.db
+data/*.db-journal
+
+# 旧数据文件（已迁移到 SQLite）
 data/*.json
 data/*.txt
-admin/logs/*.log
-data/cache/
 
 # 敏感脚本（使用后删除）
 reset_config.php

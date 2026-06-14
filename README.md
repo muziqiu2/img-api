@@ -15,9 +15,10 @@
 
 ### 环境要求
 
-- PHP 7.0 或更高版本
+- PHP 7.4 或更高版本
+- PHP PDO SQLite 扩展（通常默认开启）
 - Apache/Nginx Web服务器
-- 开启curl扩展（推荐）
+- 开启 curl 扩展（推荐）
 
 ### 安装部署
 
@@ -149,12 +150,9 @@ fetch('https://your-domain.com/pc.php?return=json')
 │   ├── dashboard.php    # 管理后台
 │   ├── logout.php       # 退出登录
 │   └── logs/            # 操作日志目录
+├── public/             # 静态资源目录
 └── data/
-    ├── user_config.json # 用户配置
-    ├── api_call_count.json # 调用统计
-    ├── rate_limit.json  # 频率限制数据
-    ├── pc.txt           # PC端图片链接
-    ├── pe.txt           # 移动端图片链接
+    ├── app.db           # SQLite 数据库
     └── cache/           # 缓存目录
 ```
 
@@ -170,7 +168,11 @@ fetch('https://your-domain.com/pc.php?return=json')
 
 ## 更新日志
 
-### v2.1 (2026-06-14)
+### v3.0 (2026-06-14)
+- 🗄️ **数据库升级**：从 JSON/TXT 文件迁移到 SQLite 数据库
+  - 单文件存储，便于部署和迁移
+  - 支持高并发，性能提升显著
+  - 内置索引，查询速度更快
 - 🔒 **安全修复**：增强SSRF防护，验证DNS解析结果、禁止内网IP段、验证MIME类型
 - 🔒 **安全修复**：修复登录锁定绕过漏洞（CSRF检查顺序）
 - 🔒 **安全修复**：修复XSS漏洞（操作日志、图片链接列表）
@@ -178,8 +180,6 @@ fetch('https://your-domain.com/pc.php?return=json')
 - 🔒 **安全修复**：添加管理后台频率限制（每分钟10次请求）
 - 🐛 **Bug修复**：修复登录失败计数显示错误
 - 🐛 **Bug修复**：修复分页计算bug（总数为0时显示错误）
-- 🐛 **Bug修复**：修复统计更新竞态条件（添加重试机制）
-- ⚡ **优化**：优化URL重复检查效率（从O(n)到O(1)）
 - ⚡ **优化**：JSON响应添加charset=utf-8
 - 🔧 **改进**：使用__DIR__替代相对路径，提高兼容性
 - 📝 **新增**：添加reset_config.php重置脚本
