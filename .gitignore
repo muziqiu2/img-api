@@ -2,6 +2,9 @@
 data/*.db
 data/*.db-journal
 
+# 缓存目录（包含 .cache 文件），每次版本更新自动重建
+data/cache/
+
 # 旧数据文件（已迁移到 SQLite）
 data/*.json
 data/*.txt
