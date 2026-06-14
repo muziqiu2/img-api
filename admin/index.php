@@ -241,8 +241,12 @@ if (isAccountLocked()) {
         </form>
         
         <div class="form-footer">
+            <?php if (isDefaultPassword()): ?>
             <p>默认账号: admin | 默认密码: 123456</p>
             <p>登录后请及时修改密码</p>
+            <?php else: ?>
+            <p>请使用您的账号登录</p>
+            <?php endif; ?>
         </div>
     </div>
     

@@ -564,10 +564,16 @@ function logAdminAction($action) {
     $db = getDb();
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $time = date('Y-m-d H:i:s');
-    $username = getCurrentUsername();
-    
+    // 优先使用 session 中的用户名，如果不存在则从数据库读取
+    $username = $_SESSION['admin_username'] ?? getCurrentUsername();
+
     $stmt = $db->prepare("INSERT INTO admin_logs (time, username, ip, action) VALUES (?, ?, ?, ?)");
     return $stmt->execute([$time, $username, $ip, $action]);
+}
+
+// 检查是否为默认密码
+function isDefaultPassword() {
+    return verifyPassword('123456');
 }
 
 function getAdminLogs($limit = 100) {
