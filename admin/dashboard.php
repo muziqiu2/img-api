@@ -708,7 +708,7 @@ $currentUsername = getCurrentUsername();
                                     <?php foreach ($logs as $log): ?>
                                         <div class="log-item">
                                             <span class="log-time"><?php echo htmlspecialchars($log['time']); ?></span>
-                                            <span class="log-user">[<?php echo htmlspecialchars($log['user']); ?>]</span>
+                                            <span class="log-user">[<?php echo htmlspecialchars($log['username']); ?>]</span>
                                             <span><?php echo htmlspecialchars($log['action']); ?></span>
                                             <span class="log-ip">IP: <?php echo htmlspecialchars($log['ip']); ?></span>
                                         </div>
