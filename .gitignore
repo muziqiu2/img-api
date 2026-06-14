@@ -6,6 +6,7 @@ data/cache/
 
 # 敏感脚本（使用后删除）
 reset_config.php
+generate_mock_stats.php
 
 # 临时文件
 *.tmp
