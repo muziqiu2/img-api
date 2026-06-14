@@ -5,7 +5,7 @@
  */
 
 // 静态文件扩展名
-$staticExtensions = ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'map'];
+$staticExtensions = ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'otf', 'map'];
 
 // 获取请求 URI
 $requestUri = $_SERVER['REQUEST_URI'];
@@ -28,6 +28,7 @@ if (in_array($ext, $staticExtensions) && file_exists(__DIR__ . '/public' . $path
         'woff' => 'font/woff',
         'woff2' => 'font/woff2',
         'ttf' => 'font/ttf',
+        'otf' => 'font/otf',
         'eot' => 'application/vnd.ms-fontobject',
         'map' => 'application/json',
     ];
