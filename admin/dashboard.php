@@ -144,9 +144,9 @@ $currentUsername = getCurrentUsername();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>魔法师API - 后台管理</title>
-    <!-- 国内CDN资源 -->
-    <link href="https://cdn.staticfile.org/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.staticfile.org/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- 本地资源 -->
+    <link href="/public/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/public/css/all.min.css" rel="stylesheet">
     
     <style>
         :root {
@@ -759,8 +759,8 @@ $currentUsername = getCurrentUsername();
         </div>
     </div>
 
-    <script src="https://cdn.staticfile.org/jquery/3.7.1/jquery.min.js"></script>
-    <script src="https://cdn.staticfile.org/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="/public/js/jquery.min.js"></script>
+    <script src="/public/js/bootstrap.bundle.min.js"></script>
     <script>
         // 自动调整textarea高度
         document.getElementById('urls')?.addEventListener('input', function() {

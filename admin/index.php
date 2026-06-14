@@ -73,8 +73,8 @@ if (isAccountLocked()) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>魔法师API - 登录</title>
-    <link href="https://cdn.staticfile.org/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.staticfile.org/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="/public/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/public/css/all.min.css" rel="stylesheet">
     
     <style>
         :root {
@@ -246,7 +246,7 @@ if (isAccountLocked()) {
         </div>
     </div>
     
-    <script src="https://cdn.staticfile.org/jquery/3.7.1/jquery.min.js"></script>
-    <script src="https://cdn.staticfile.org/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="/public/js/jquery.min.js"></script>
+    <script src="/public/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

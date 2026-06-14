@@ -8,13 +8,12 @@
     <meta name="keywords" content="随机图片,二次元API,动漫壁纸,图片接口">
     <meta name="description" content="提供高质量随机二次元图片API服务，支持PC/移动端自适应">
     
-    <!-- 国内稳定CDN资源 - 保持原始库名称正确 -->
-    <link href="https://cdn.staticfile.org/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.staticfile.org/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdn.staticfile.org/jquery/3.7.1/jquery.min.js"></script>
-    <!-- 修正Chart.js引用，保持正确的库名称 -->
-    <script src="https://cdn.staticfile.org/Chart.js/4.4.1/chart.umd.min.js"></script>
-    <script src="https://cdn.staticfile.org/clipboard.js/2.0.11/clipboard.min.js"></script>
+    <!-- 本地资源 -->
+    <link href="/public/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/public/css/all.min.css" rel="stylesheet">
+    <script src="/public/js/jquery.min.js"></script>
+    <script src="/public/js/chart.umd.min.js"></script>
+    <script src="/public/js/clipboard.min.js"></script>
     
     <style>
         :root {
@@ -495,7 +494,7 @@
         </div>
     </footer>
 
-    <script src="https://cdn.staticfile.org/twitter-bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="/public/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // 初始化复制功能
