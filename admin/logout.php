@@ -1,5 +1,5 @@
 <?php
-require_once '../config.php';
+require_once dirname(__DIR__) . '/config.php';
 
 if (session_status() === PHP_SESSION_ACTIVE) {
     $_SESSION = [];

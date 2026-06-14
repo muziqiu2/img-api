@@ -123,6 +123,16 @@ fetch('https://your-domain.com/pc.php?return=json')
 2. **目录保护**：确保`data/`和`admin/logs/`目录无法通过web访问
 3. **HTTPS**：生产环境建议使用HTTPS
 4. **定期备份**：定期备份`data/`目录下的数据文件
+5. **删除重置脚本**：使用完 `reset_config.php` 后请立即删除
+
+## 安全特性
+
+- 🔒 SSRF防护：禁止访问内网IP，验证图片MIME类型
+- 🔒 登录锁定：5次失败后锁定5分钟
+- 🔒 CSRF Token：所有POST操作验证
+- 🔒 频率限制：API每分钟100次，管理后台每分钟10次
+- 🔒 XSS防护：所有用户输入输出均经过转义
+- 🔒 目录保护：敏感目录禁止web访问
 
 ## 项目结构
 
@@ -133,6 +143,7 @@ fetch('https://your-domain.com/pc.php?return=json')
 ├── pe.php               # 移动端专用API
 ├── index.php            # 项目首页
 ├── config.php           # 配置文件和核心函数
+├── reset_config.php     # 重置用户配置脚本（使用后删除）
 ├── admin/
 │   ├── index.php        # 登录页面
 │   ├── dashboard.php    # 管理后台
@@ -141,6 +152,7 @@ fetch('https://your-domain.com/pc.php?return=json')
 └── data/
     ├── user_config.json # 用户配置
     ├── api_call_count.json # 调用统计
+    ├── rate_limit.json  # 频率限制数据
     ├── pc.txt           # PC端图片链接
     ├── pe.txt           # 移动端图片链接
     └── cache/           # 缓存目录
@@ -157,6 +169,20 @@ fetch('https://your-domain.com/pc.php?return=json')
 本项目仅供学习和个人使用。
 
 ## 更新日志
+
+### v2.1 (2026-06-14)
+- 🔒 **安全修复**：增强SSRF防护，验证DNS解析结果、禁止内网IP段、验证MIME类型
+- 🔒 **安全修复**：修复登录锁定绕过漏洞（CSRF检查顺序）
+- 🔒 **安全修复**：修复XSS漏洞（操作日志、图片链接列表）
+- 🔒 **安全修复**：添加API频率限制（每分钟100次请求）
+- 🔒 **安全修复**：添加管理后台频率限制（每分钟10次请求）
+- 🐛 **Bug修复**：修复登录失败计数显示错误
+- 🐛 **Bug修复**：修复分页计算bug（总数为0时显示错误）
+- 🐛 **Bug修复**：修复统计更新竞态条件（添加重试机制）
+- ⚡ **优化**：优化URL重复检查效率（从O(n)到O(1)）
+- ⚡ **优化**：JSON响应添加charset=utf-8
+- 🔧 **改进**：使用__DIR__替代相对路径，提高兼容性
+- 📝 **新增**：添加reset_config.php重置脚本
 
 ### v2.0 (2025-04-18)
 - 🔒 增强安全性：添加SSRF防护

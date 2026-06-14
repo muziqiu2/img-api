@@ -20,14 +20,23 @@ define('COUNT_FILE', __DIR__ . '/data/api_call_count.json');
 define('ADMIN_LOG_FILE', __DIR__ . '/admin/logs/admin_actions.log');
 define('SESSION_TIMEOUT', 3600); // 会话超时时间(秒)
 
+// 频率限制配置
+define('RATE_LIMIT_FILE', __DIR__ . '/data/rate_limit.json');
+define('RATE_LIMIT_WINDOW', 60); // 60秒窗口
+define('RATE_LIMIT_MAX_API', 100); // API每分钟最大请求数
+define('RATE_LIMIT_MAX_ADMIN', 10); // 管理后台每分钟最大请求数
+
 // 定义是否在管理区域
 $isAdminArea = strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false;
 
 // 仅在管理区域启动会话
 if ($isAdminArea) {
     ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_secure', $_SERVER['HTTPS'] ?? false);
     ini_set('session.cookie_samesite', 'Lax');
+    // 修正 HTTPS 检测
+    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        ini_set('session.cookie_secure', 1);
+    }
     session_start();
     
     // 登录状态检查
@@ -44,20 +53,24 @@ if ($isAdminArea) {
     define('IS_LOGGED_IN', false);
 }
 
+// 新增：重置用户配置为默认（安全考虑：此函数应在生产环境部署后谨慎使用）
+function resetUserConfig() {
+    $defaultConfig = [
+        'username' => 'admin',
+        'password_hash' => password_hash('123456', PASSWORD_DEFAULT),
+        'login_attempts' => 0,
+        'last_attempt' => 0,
+        'locked_until' => 0
+    ];
+    return saveUserConfig($defaultConfig);
+}
+
 // 新增：获取用户配置
 function getUserConfig() {
     // 检查配置文件是否存在
     if (!file_exists(USER_CONFIG_FILE)) {
         // 创建默认配置
-        $defaultConfig = [
-            'username' => 'admin',
-            'password_hash' => password_hash('123456', PASSWORD_DEFAULT),
-            'login_attempts' => 0,
-            'last_attempt' => 0,
-            'locked_until' => 0
-        ];
-        saveUserConfig($defaultConfig);
-        return $defaultConfig;
+        return createDefaultUserConfig();
     }
     
     // 读取配置文件
@@ -98,6 +111,19 @@ function getUserConfig() {
     }
     
     return $cleanConfig;
+}
+
+// 创建默认用户配置
+function createDefaultUserConfig() {
+    $defaultConfig = [
+        'username' => 'admin',
+        'password_hash' => password_hash('123456', PASSWORD_DEFAULT),
+        'login_attempts' => 0,
+        'last_attempt' => 0,
+        'locked_until' => 0
+    ];
+    saveUserConfig($defaultConfig);
+    return $defaultConfig;
 }
 
 // 新增：保存用户配置（带文件锁）
@@ -172,11 +198,140 @@ function getRemainingAttempts() {
     return max(0, 5 - $config['login_attempts']);
 }
 
+// ==================== 频率限制功能 ====================
+
 /**
- * 验证管理员密码
+ * 检查API频率限制
+ * @return bool true 表示通过，false 表示超出限制
  */
-function validateAdminPassword($password) {
-    return verifyPassword($password);
+function checkApiRateLimit() {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $now = time();
+    $windowStart = $now - RATE_LIMIT_WINDOW;
+    
+    $data = [];
+    $file = fopen(RATE_LIMIT_FILE, 'c+');
+    if (!$file) {
+        return true; // 文件无法打开时放行
+    }
+    
+    if (flock($file, LOCK_EX)) {
+        $content = fread($file, filesize(RATE_LIMIT_FILE) ?: 1);
+        $data = json_decode($content, true) ?? [];
+        
+        // 清理过期记录
+        foreach ($data as $key => $record) {
+            if ($record['timestamp'] < $windowStart) {
+                unset($data[$key]);
+            }
+        }
+        
+        // 检查当前IP的请求数
+        $ipKey = 'api_' . md5($ip);
+        if (!isset($data[$ipKey])) {
+            $data[$ipKey] = ['count' => 0, 'timestamp' => $now];
+        }
+        
+        // 检查是否超限
+        if ($data[$ipKey]['count'] >= RATE_LIMIT_MAX_API) {
+            flock($file, LOCK_UN);
+            fclose($file);
+            return false;
+        }
+        
+        // 增加计数
+        $data[$ipKey]['count']++;
+        $data[$ipKey]['timestamp'] = $now;
+        
+        // 保存
+        ftruncate($file, 0);
+        rewind($file);
+        fwrite($file, json_encode($data));
+        flock($file, LOCK_UN);
+    }
+    fclose($file);
+    return true;
+}
+
+/**
+ * 检查管理后台频率限制
+ * @return bool true 表示通过，false 表示超出限制
+ */
+function checkAdminRateLimit() {
+    if (!IS_LOGGED_IN) {
+        return true; // 未登录不限制
+    }
+    
+    $username = $_SESSION['admin_username'] ?? 'unknown';
+    $now = time();
+    $windowStart = $now - RATE_LIMIT_WINDOW;
+    
+    $data = [];
+    $file = fopen(RATE_LIMIT_FILE, 'c+');
+    if (!$file) {
+        return true;
+    }
+    
+    if (flock($file, LOCK_EX)) {
+        $content = fread($file, filesize(RATE_LIMIT_FILE) ?: 1);
+        $data = json_decode($content, true) ?? [];
+        
+        // 清理过期记录
+        foreach ($data as $key => $record) {
+            if ($record['timestamp'] < $windowStart) {
+                unset($data[$key]);
+            }
+        }
+        
+        // 检查当前用户的请求数
+        $userKey = 'admin_' . md5($username);
+        if (!isset($data[$userKey])) {
+            $data[$userKey] = ['count' => 0, 'timestamp' => $now];
+        }
+        
+        // 检查是否超限
+        if ($data[$userKey]['count'] >= RATE_LIMIT_MAX_ADMIN) {
+            flock($file, LOCK_UN);
+            fclose($file);
+            return false;
+        }
+        
+        // 增加计数
+        $data[$userKey]['count']++;
+        $data[$userKey]['timestamp'] = $now;
+        
+        // 保存
+        ftruncate($file, 0);
+        rewind($file);
+        fwrite($file, json_encode($data));
+        flock($file, LOCK_UN);
+    }
+    fclose($file);
+    return true;
+}
+
+/**
+ * 获取频率限制剩余请求数
+ */
+function getRateLimitRemaining($type = 'api') {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $key = $type . '_' . md5($ip);
+    $max = $type === 'api' ? RATE_LIMIT_MAX_API : RATE_LIMIT_MAX_ADMIN;
+    
+    $file = fopen(RATE_LIMIT_FILE, 'r');
+    if (!$file) {
+        return $max;
+    }
+    
+    $content = fread($file, filesize(RATE_LIMIT_FILE) ?: 1);
+    $data = json_decode($content, true) ?? [];
+    fclose($file);
+    
+    if (!isset($data[$key])) {
+        return $max;
+    }
+    
+    return max(0, $max - $data[$key]['count']);
 }
 
 /**
@@ -223,7 +378,7 @@ function getImageUrls($type = 'pc', $page = 1, $perPage = 20) {
     $file = $type === 'pe' ? PE_IMG_FILE : PC_IMG_FILE;
     if (!file_exists($file)) {
         file_put_contents($file, '');
-        return ['urls' => [], 'total' => 0, 'pages' => 0];
+        return ['urls' => [], 'total' => 0, 'pages' => 0, 'page' => $page];
     }
     
     // 读取并过滤URL
@@ -232,14 +387,17 @@ function getImageUrls($type = 'pc', $page = 1, $perPage = 20) {
     $total = count($urls);
     
     // 分页处理
+    $totalPages = $total > 0 ? ceil($total / $perPage) : 0;
+    // 确保页码在有效范围内
+    $page = max(1, min($page, max(1, $totalPages)));
     $offset = ($page - 1) * $perPage;
     $paginatedUrls = array_slice($urls, $offset, $perPage);
-    $totalPages = max(1, ceil($total / $perPage));
     
     return [
         'urls' => $paginatedUrls,
         'total' => $total,
-        'pages' => $totalPages
+        'pages' => $totalPages,
+        'page' => $page
     ];
 }
 
@@ -256,11 +414,15 @@ function addImageUrls($urls, $type = 'pc') {
         $existingUrls = array_filter($existingUrls, 'isValidImageUrl');
     }
     
+    // 使用 array_flip 将数组转为键值，查找效率从 O(n) 变为 O(1)
+    $existingUrlsFlip = array_flip($existingUrls);
+    
     // 处理新URL
     $newUrls = [];
     foreach ($urls as $url) {
-        if (isValidImageUrl($url) && !in_array($url, $existingUrls)) {
+        if (isValidImageUrl($url) && !isset($existingUrlsFlip[$url])) {
             $newUrls[] = $url;
+            $existingUrlsFlip[$url] = true; // 防止批量添加时重复
         }
     }
     
@@ -319,45 +481,59 @@ function clearImageUrls($type = 'pc') {
 }
 
 /**
- * 更新调用统计（带文件锁）
+ * 更新调用统计（带文件锁和重试机制）
  */
 function updateCallCount($type, $returnType = 'redirect') {
     $date = date('Y-m-d');
-    $data = [];
+    $maxRetries = 3;
+    $retryDelay = 100000; // 100ms
     
-    // 读取现有数据（带锁）
-    $file = fopen(COUNT_FILE, 'c+');
-    if ($file && flock($file, LOCK_EX)) {
-        $content = fread($file, filesize(COUNT_FILE) ?: 1);
-        $data = json_decode($content, true) ?? [];
-        ftruncate($file, 0);
-        rewind($file);
-        
-        // 初始化数据结构
-        if (!isset($data['total'])) $data['total'] = 0;
-        if (!isset($data[$type])) $data[$type] = 0;
-        if (!isset($data['daily'])) $data['daily'] = [];
-        if (!isset($data['daily'][$date])) {
-            $data['daily'][$date] = ['total' => 0, 'pc' => 0, 'pe' => 0, 'api' => 0];
+    for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+        $file = fopen(COUNT_FILE, 'c+');
+        if (!$file) {
+            continue;
         }
-        if (!isset($data['return_types'])) $data['return_types'] = ['redirect' => 0, 'json' => 0, 'img' => 0];
-        if (!isset($data['return_types'][$returnType])) $data['return_types'][$returnType] = 0;
         
-        // 更新统计
-        $data['total']++;
-        $data[$type]++;
-        $data['daily'][$date]['total']++;
-        $data['daily'][$date][$type]++;
-        $data['return_types'][$returnType]++;
+        if (flock($file, LOCK_EX)) {
+            $content = fread($file, filesize(COUNT_FILE) ?: 1);
+            $data = json_decode($content, true) ?? [];
+            ftruncate($file, 0);
+            rewind($file);
+            
+            // 初始化数据结构
+            if (!isset($data['total'])) $data['total'] = 0;
+            if (!isset($data[$type])) $data[$type] = 0;
+            if (!isset($data['daily'])) $data['daily'] = [];
+            if (!isset($data['daily'][$date])) {
+                $data['daily'][$date] = ['total' => 0, 'pc' => 0, 'pe' => 0, 'api' => 0];
+            }
+            if (!isset($data['return_types'])) $data['return_types'] = ['redirect' => 0, 'json' => 0, 'img' => 0];
+            if (!isset($data['return_types'][$returnType])) $data['return_types'][$returnType] = 0;
+            
+            // 更新统计
+            $data['total']++;
+            $data[$type]++;
+            $data['daily'][$date]['total']++;
+            $data['daily'][$date][$type]++;
+            $data['return_types'][$returnType]++;
+            
+            // 保存数据
+            fwrite($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            flock($file, LOCK_UN);
+            fclose($file);
+            return $data;
+        }
         
-        // 保存数据
-        fwrite($file, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-        flock($file, LOCK_UN);
         fclose($file);
-        return $data;
+        
+        // 锁获取失败，稍后重试
+        if ($attempt < $maxRetries - 1) {
+            usleep($retryDelay);
+        }
     }
-    if ($file) fclose($file);
-    return $data;
+    
+    // 所有重试都失败，返回空数据但不静默丢失
+    return ['error' => 'failed_to_acquire_lock', 'attempts' => $maxRetries];
 }
 
 /**
@@ -486,7 +662,7 @@ function clearCachedImageUrls($type) {
     }
 }
 
-// SSRF防护：安全获取远程图片
+// SSRF防护：安全获取远程图片（增强版）
 function fetchRemoteImage($url) {
     // 基本的URL验证
     if (!filter_var($url, FILTER_VALIDATE_URL)) {
@@ -494,15 +670,49 @@ function fetchRemoteImage($url) {
     }
     
     $parsed = parse_url($url);
+    $scheme = strtolower($parsed['scheme'] ?? '');
     $host = $parsed['host'] ?? '';
     
-    // 禁止访问内网IP
-    $ip = gethostbyname($host);
-    if (preg_match('/^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|::1)/', $ip)) {
+    // 只允许 http 和 https 协议
+    if (!in_array($scheme, ['http', 'https'])) {
         return false;
     }
     
-    // 使用cURL获取，设置超时
+    // DNS 解析获取 IP 地址
+    $ip = gethostbyname($host);
+    
+    // 检查内网IP（更全面的检查）
+    $forbiddenPatterns = [
+        '/^(10\.)/',                           // 10.0.0.0/8
+        '/^172\.(1[6-9]|2[0-9]|3[01])\./',    // 172.16.0.0/12
+        '/^192\.168\./',                       // 192.168.0.0/16
+        '/^127\./',                            // 127.0.0.0/8 (localhost)
+        '/^169\.254\./',                       // 169.254.0.0/16 (link-local)
+        '/^0\./',                              // 0.0.0.0/8
+        '/^224\./',                            // 224.0.0.0/4 (multicast)
+        '/^240\./',                            // 240.0.0.0/4 (reserved)
+        '/^(::1|fe80:|fc00:|fd00:)/i',        // IPv6 本地地址
+    ];
+    
+    foreach ($forbiddenPatterns as $pattern) {
+        if (preg_match($pattern, $ip)) {
+            return false;
+        }
+    }
+    
+    // 验证 resolve 后的 IP 不是内网
+    $resolvedIp = gethostbyname($host);
+    if ($resolvedIp === $host) {
+        // DNS 解析失败
+        return false;
+    }
+    foreach ($forbiddenPatterns as $pattern) {
+        if (preg_match($pattern, $resolvedIp)) {
+            return false;
+        }
+    }
+    
+    // 使用cURL获取，设置超时和安全选项
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -512,18 +722,74 @@ function fetchRemoteImage($url) {
     curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; ImageFetcher/1.0)');
     
+    // 禁止 SSL 证书验证漏洞利用
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    
+    // 设置期望的 MIME 类型
+    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
+    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($curl, $header) use (&$contentType) {
+        $len = strlen($header);
+        $header = trim($header);
+        if (strpos(strtolower($header), 'content-type:') === 0) {
+            $contentType = trim(substr($header, 13));
+        }
+        return $len;
+    });
+    
     $data = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
     curl_close($ch);
     
-    if ($httpCode === 200 && $data !== false) {
-        return $data;
+    // cURL 执行失败
+    if ($data === false || !empty($error)) {
+        return false;
     }
-    return false;
+    
+    // HTTP 状态码检查
+    if ($httpCode !== 200) {
+        return false;
+    }
+    
+    // 验证 Content-Type
+    if (isset($contentType)) {
+        $mimeType = trim(explode(';', $contentType)[0]);
+        if (!in_array(strtolower($mimeType), $allowedTypes)) {
+            return false;
+        }
+    }
+    
+    // 验证图片数据是否为有效图片
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $detectedMime = $finfo->buffer($data);
+    if (!in_array($detectedMime, $allowedTypes)) {
+        return false;
+    }
+    
+    // 检查图片数据是否为空或过大（限制 50MB）
+    if (strlen($data) < 100 || strlen($data) > 50 * 1024 * 1024) {
+        return false;
+    }
+    
+    return $data;
 }
 
 // 公共API处理函数
 function handleImageApiRequest($type, $countType = null) {
+    // 检查 API 频率限制
+    if (!checkApiRateLimit()) {
+        header('HTTP/1.1 429 Too Many Requests');
+        header('Content-Type: application/json; charset=utf-8');
+        header('Retry-After: 60');
+        echo json_encode([
+            'success' => false,
+            'error' => '请求过于频繁，请稍后再试',
+            'retry_after' => 60
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    
     // 验证并获取返回类型
     $validReturnTypes = ['redirect', 'json', 'img'];
     $returnType = isset($_GET['return']) ? $_GET['return'] : 'redirect';
@@ -549,13 +815,13 @@ function handleImageApiRequest($type, $countType = null) {
                     (($type === 'pe') ? '没有找到可用的移动端图片' : '没有找到可用的图片');
         
         if ($returnType === 'json') {
-            header('Content-Type: application/json');
+            header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
                 'success' => false,
                 'error' => $errorMsg,
                 'type' => $type,
                 'timestamp' => time()
-            ]);
+            ], JSON_UNESCAPED_UNICODE);
         } else {
             http_response_code(404);
             echo $errorMsg;
@@ -569,7 +835,7 @@ function handleImageApiRequest($type, $countType = null) {
     
     // 添加随机参数防止URL缓存
     if ($cacheTime == 0) {
-        $randomParam = 'rand=' . uniqid();
+        $randomParam = 'rand=' . bin2hex(random_bytes(8));
         $imageUrl .= (strpos($imageUrl, '?') === false ? '?' : '&') . $randomParam;
     }
     
@@ -587,7 +853,7 @@ function handleImageApiRequest($type, $countType = null) {
             }
         }
         
-        header('Content-Type: application/json');
+        header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'success' => true,
             'url' => $imageUrl,
@@ -595,7 +861,7 @@ function handleImageApiRequest($type, $countType = null) {
             'height' => $height,
             'type' => $type,
             'timestamp' => time()
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
     } elseif ($returnType === 'img') {
         $imageData = fetchRemoteImage($imageUrl);
         if ($imageData) {

@@ -1,5 +1,5 @@
 <?php
-require_once '../config.php';
+require_once dirname(__DIR__) . '/config.php';
 
 // 已登录用户跳转到管理面板
 if (IS_LOGGED_IN) {
@@ -17,15 +17,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     $password = trim($_POST['password'] ?? '');
     $token = $_POST['csrf_token'] ?? '';
     
-    // 验证 CSRF Token
-    if (!validateCsrfToken($token)) {
-        $error = "安全验证失败，请刷新页面重试";
-    }
-    // 检查账户是否被锁定
-    elseif (isAccountLocked()) {
+    // 先检查账户是否被锁定（防止绕过）
+    if (isAccountLocked()) {
         $config = getUserConfig();
         $remainingTime = max(0, ($config['locked_until'] - time()) / 60);
         $error = "账户已临时锁定，请 " . number_format($remainingTime, 0) . " 分钟后再试";
+    }
+    // 验证 CSRF Token
+    elseif (!validateCsrfToken($token)) {
+        $error = "安全验证失败，请刷新页面重试";
     }
     // 验证用户名和密码
     elseif (empty($username) || empty($password)) {
@@ -38,8 +38,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         recordLoginAttempt(false);
     }
     // 验证密码是否正确
-    elseif (!validateAdminPassword($password)) {
-        $remaining = getRemainingAttempts() - 1;
+    elseif (!verifyPassword($password)) {
+        $remaining = getRemainingAttempts();
         $error = "用户名或密码不正确";
         if ($remaining > 0) {
             $error .= "，还剩 $remaining 次尝试机会";

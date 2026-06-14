@@ -2,8 +2,10 @@
 data/*.json
 data/*.txt
 admin/logs/*.log
-admin/data/*.json
 data/cache/
+
+# 敏感脚本（使用后删除）
+reset_config.php
 
 # 临时文件
 *.tmp

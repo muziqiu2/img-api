@@ -1,10 +1,16 @@
 <?php
-require_once '../config.php';
+require_once dirname(__DIR__) . '/config.php';
 
 // 检查登录状态
 if (!IS_LOGGED_IN) {
     header('Location: index.php');
     exit;
+}
+
+// 检查管理后台频率限制
+if (!checkAdminRateLimit()) {
+    $message = "请求过于频繁，请稍后再试";
+    $messageType = 'error';
 }
 
 // 获取当前分区
@@ -642,14 +648,17 @@ $currentUsername = getCurrentUsername();
                                     </div>
                                 <?php else: ?>
                                     <ul class="url-list">
-                                        <?php foreach ($urls as $url): ?>
+                                        <?php foreach ($urls as $url):
+                                            $escapedUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+                                            $displayUrl = strlen($url) > 80 ? substr($url, 0, 80) . '...' : $url;
+                                        ?>
                                             <li class="url-item">
-                                                <a href="<?php echo $url; ?>" target="_blank" class="url-link" title="<?php echo $url; ?>">
-                                                    <?php echo $url; ?>
+                                                <a href="<?php echo $escapedUrl; ?>" target="_blank" class="url-link" title="<?php echo $escapedUrl; ?>">
+                                                    <?php echo htmlspecialchars($displayUrl); ?>
                                                 </a>
                                                 <form method="post" onsubmit="return confirm('确定要删除这个图片链接吗？');" class="d-inline">
-                                                    <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
-                                                    <input type="hidden" name="url" value="<?php echo htmlspecialchars($url); ?>">
+                                                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
+                                                    <input type="hidden" name="url" value="<?php echo $escapedUrl; ?>">
                                                     <button type="submit" name="delete_url" class="btn btn-outline">
                                                         <i class="fas fa-times"></i>
                                                     </button>
@@ -698,10 +707,10 @@ $currentUsername = getCurrentUsername();
                                 <div class="log-list">
                                     <?php foreach ($logs as $log): ?>
                                         <div class="log-item">
-                                            <span class="log-time"><?php echo $log['time']; ?></span>
-                                            <span class="log-user">[<?php echo $log['user']; ?>]</span>
-                                            <span><?php echo $log['action']; ?></span>
-                                            <span class="log-ip">IP: <?php echo $log['ip']; ?></span>
+                                            <span class="log-time"><?php echo htmlspecialchars($log['time']); ?></span>
+                                            <span class="log-user">[<?php echo htmlspecialchars($log['user']); ?>]</span>
+                                            <span><?php echo htmlspecialchars($log['action']); ?></span>
+                                            <span class="log-ip">IP: <?php echo htmlspecialchars($log['ip']); ?></span>
                                         </div>
                                     <?php endforeach; ?>
                                 </div>
