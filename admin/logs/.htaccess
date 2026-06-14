@@ -1,0 +1,6 @@
+# 禁止通过web访问logs目录
+Order allow,deny
+Deny from all
+
+# 防止目录列表
+Options -Indexes

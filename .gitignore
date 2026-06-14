@@ -1,0 +1,21 @@
+# 敏感数据文件
+data/*.json
+data/*.txt
+admin/logs/*.log
+admin/data/*.json
+data/cache/
+
+# 临时文件
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# IDE文件
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 日志文件
+*.log
