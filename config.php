@@ -5,7 +5,7 @@
  */
 
 // 确保目录存在
-$requiredDirs = ['data', 'admin/logs', 'data/cache'];
+$requiredDirs = ['data', 'admin/logs', 'data/cache', 'data/backups', 'data/update_cache'];
 foreach ($requiredDirs as $dir) {
     if (!is_dir($dir)) {
         mkdir($dir, 0755, true);
@@ -29,6 +29,47 @@ define('RATE_LIMIT_MAX_ADMIN', 10); // 管理后台每分钟最大请求数
 
 // 代理配置（仅在确定服务器前方有可信代理时启用）
 define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded-For）
+
+// ==================== 版本与自动更新配置 ====================
+
+define('APP_VERSION', '3.0.0'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
+
+// GitHub 仓库配置
+define('GITHUB_REPO_OWNER', 'muziqiu2'); // 仓库所有者
+define('GITHUB_REPO_NAME', 'img-api');   // 仓库名称
+define('GITHUB_API_BASE', 'https://api.github.com/repos/' . GITHUB_REPO_OWNER . '/' . GITHUB_REPO_NAME);
+define('GITHUB_TOKEN', ''); // 可选：个人访问令牌（提升API速率限制，私有仓库必需）
+
+// 更新相关目录
+define('UPDATE_BACKUP_DIR', __DIR__ . '/data/backups');       // 更新备份目录
+define('UPDATE_CACHE_DIR', __DIR__ . '/data/update_cache');   // 临时下载/解压目录
+define('UPDATE_CHECK_CACHE_TTL', 3600);                       // 版本检查缓存（1小时）
+define('UPDATE_CHECK_CACHE_FILE', CACHE_DIR . '/update_check.json');
+
+// 更新安全配置
+define('UPDATE_MAX_ZIP_SIZE', 50 * 1024 * 1024);              // 允许的最大更新包（50MB）
+define('UPDATE_TIMEOUT', 300);                                // 更新执行超时时间（5分钟）
+define('UPDATE_MIN_FREE_SPACE', 100 * 1024 * 1024);           // 最少需要 100MB 空闲空间
+
+// 更新时被保护、不会被覆盖的目录/文件（相对项目根目录）
+define('UPDATE_PROTECTED_PATHS', serialize([
+    'data/',
+    'admin/logs/',
+    'data/cache/',
+    'data/backups/',
+    'data/update_cache/',
+    '.git/',
+    '.htaccess',
+    '.router.php',
+]));
+
+// 更新时允许被替换的文件扩展名白名单（空数组表示不限制扩展名，仅受目录保护）
+define('UPDATE_ALLOWED_EXTENSIONS', serialize([
+    'php', 'txt', 'md', 'html', 'htm', 'css', 'js', 'json',
+    'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico',
+    'woff', 'woff2', 'ttf', 'eot', 'map',
+]));
 
 // ==================== 客户端IP获取函数 ====================
 
@@ -156,6 +197,21 @@ function initDatabase() {
             id TEXT PRIMARY KEY,
             count INTEGER DEFAULT 0,
             timestamp INTEGER DEFAULT 0
+        )
+    ");
+
+    // 更新日志表
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS update_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_version TEXT NOT NULL,
+            to_version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            message TEXT,
+            backup_path TEXT,
+            username TEXT,
+            ip TEXT,
+            timestamp TEXT NOT NULL
         )
     ");
 
@@ -948,5 +1004,177 @@ function isMobileDevice() {
         }
     }
     return false;
+}
+
+// ==================== 更新系统辅助函数 ====================
+
+// 获取当前应用版本号（优先从数据库/版本文件）
+function getAppVersion() {
+    if (file_exists(APP_VERSION_FILE)) {
+        $v = trim(file_get_contents(APP_VERSION_FILE));
+        if (!empty($v)) return APP_VERSION;
+        return $v;
+    }
+    return APP_VERSION;
+}
+
+// 写入当前版本号文件（数据备份，用于回滚识别
+function setAppVersion($version) {
+    return file_put_contents(APP_VERSION_FILE, $version) !== false;
+}
+
+// 获取更新日志
+function getUpdateLogs($limit = 20) {
+    try {
+        $db = getDb();
+        $stmt = $db->prepare("SELECT * FROM update_logs ORDER BY id DESC LIMIT ?");
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+// 写入更新日志
+function logUpdateAction($fromVersion, $toVersion, $status, $message = '', $backupPath = '') {
+    try {
+        $db = getDb();
+        $time = date('Y-m-d H:i:s');
+        $username = function_exists('getCurrentUsername') ? getCurrentUsername() : 'system';
+        $ip = function_exists('getClientIp') ? getClientIp() : 'unknown';
+        $stmt = $db->prepare("INSERT INTO update_logs (from_version, to_version, status, message, backup_path, username, ip, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        return $stmt->execute([$fromVersion, $toVersion, $status, $message, $backupPath, $username, $ip, $time]);
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+// 比较两个语义化版本号（返回 1: a>b, -1: a<b, 0: a==b）
+function compareVersions($a, $b) {
+    $a = preg_replace('/^v/', '', trim($a));
+    $b = preg_replace('/^v/', '', trim($b));
+    return version_compare($a, $b);
+}
+
+// 清理更新缓存文件
+function cleanupUpdateCache() {
+    $dirs = [UPDATE_CACHE_DIR];
+    foreach ($dirs as $dir) {
+        if (!is_dir($dir)) continue;
+        $items = glob(rtrim($dir, '/') . '/*');
+        if ($items === false) continue;
+        foreach ($items as $item) {
+            if (is_file($item)) {
+                @unlink($item);
+            } elseif (is_dir($item)) {
+                removeDirectory($item);
+            }
+        }
+    }
+}
+
+// 递归删除目录
+function removeDirectory($dir) {
+    if (!is_dir($dir)) return;
+    $items = glob(rtrim($dir, '/') . '/*');
+    if ($items === false) return;
+    foreach ($items as $item) {
+        if (is_file($item)) {
+            @unlink($item);
+        } elseif (is_dir($item)) {
+            removeDirectory($item);
+        }
+    }
+    @rmdir($dir);
+}
+
+// 检查是否有更新检查结果缓存（避免频繁请求GitHub API）
+function getCachedUpdateCheck() {
+    if (!file_exists(UPDATE_CHECK_CACHE_FILE)) return null;
+    if (time() - filemtime(UPDATE_CHECK_CACHE_FILE) > UPDATE_CHECK_CACHE_TTL) return null;
+    $data = @json_decode(file_get_contents(UPDATE_CHECK_CACHE_FILE), true);
+    return is_array($data) && !empty($data) ? $data : null;
+}
+
+// 写入更新检查缓存
+function setCachedUpdateCheck($data) {
+    @file_put_contents(UPDATE_CHECK_CACHE_FILE, json_encode($data, JSON_UNESCAPED_UNICODE));
+}
+
+// 清除更新检查缓存
+function clearUpdateCheckCache() {
+    if (file_exists(UPDATE_CHECK_CACHE_FILE)) {
+        @unlink(UPDATE_CHECK_CACHE_FILE);
+    }
+}
+
+// 检查服务器环境是否满足更新要求（返回 [success, messages]
+function checkUpdateEnvironment() {
+    $errors = [];
+    $warnings = [];
+
+    // 检查PHP扩展
+    if (!extension_loaded('zip')) {
+        $errors[] = '缺少 zip 扩展（用于解压更新包）';
+    }
+    if (!extension_loaded('curl') && !ini_get('allow_url_fopen')) {
+        $errors[] = '需要 curl 扩展或 allow_url_fopen 开启（用于下载更新包）';
+    }
+
+    // 检查目录可写
+    $writableDirs = [__DIR__, __DIR__ . '/admin', UPDATE_BACKUP_DIR, UPDATE_CACHE_DIR];
+    foreach ($writableDirs as $dir) {
+        if (!is_writable($dir)) {
+            $errors[] = '目录不可写: ' . basename($dir) . '（更新需要写权限）';
+        }
+    }
+
+    // 检查磁盘空间
+    $freeSpace = @disk_free_space(__DIR__);
+    if ($freeSpace !== false && $freeSpace < UPDATE_MIN_FREE_SPACE) {
+        $errors[] = '磁盘空间不足（需要至少 ' . round(UPDATE_MIN_FREE_SPACE / 1024 / 1024, 1) . 'MB 剩余空间）';
+    }
+
+    // 检查执行时限
+    if (ini_get('max_execution_time') > 0 && ini_get('max_execution_time') < UPDATE_TIMEOUT) {
+        $warnings[] = 'PHP max_execution_time=' . ini_get('max_execution_time') . 's 可能不足，建议设置为 ' . UPDATE_TIMEOUT . 's 或以上';
+    }
+
+    return [
+        'ok' => empty($errors),
+        'errors' => $errors,
+        'warnings' => $warnings,
+    ];
+}
+
+// 判断路径是否受保护（不会被更新覆盖
+function isPathProtected($relativePath) {
+    $protected = unserialize(UPDATE_PROTECTED_PATHS);
+    $relativePath = str_replace('\\', '/', $relativePath);
+    $normalized = ltrim($relativePath, './');
+    foreach ($protected as $pattern) {
+        if (empty($pattern)) continue;
+        if ($normalized === rtrim($pattern, '/') ||
+            str_starts_with_custom($normalized, $pattern)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 兼容低版本PHP的路径前缀检查
+function str_starts_with_custom($haystack, $needle) {
+    if (function_exists('str_starts_with')) {
+        return str_starts_with($haystack, $needle);
+    }
+    return $needle !== '' && strncmp($haystack, $needle, strlen($needle)) === 0;
+}
+
+// 检查文件扩展名是否在白名单内
+function isExtensionAllowed($filename) {
+    $allowed = unserialize(UPDATE_ALLOWED_EXTENSIONS);
+    if (empty($allowed)) return true;
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    return in_array($ext, $allowed);
 }
 ?>

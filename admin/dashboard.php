@@ -234,6 +234,12 @@ $currentUsername = getCurrentUsername();
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="?section=update" class="nav-link <?php echo $currentSection === 'update' ? 'active' : ''; ?>">
+                            <i class="nav-icon fas fa-sync-alt"></i>
+                            <p>系统更新</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="logout.php" class="nav-link">
                             <i class="nav-icon fas fa-sign-out-alt"></i>
                             <p>退出登录</p>
@@ -251,10 +257,11 @@ $currentUsername = getCurrentUsername();
                 <div class="row mb-2">
                     <div class="col-sm-6">
                         <h1 class="m-0">
-                            <?php 
+                            <?php
                             if ($currentSection === 'management') echo '图片管理';
                             elseif ($currentSection === 'logs') echo '操作日志';
                             elseif ($currentSection === 'user') echo '用户设置';
+                            elseif ($currentSection === 'update') echo '系统更新';
                             ?>
                         </h1>
                     </div>
@@ -473,6 +480,107 @@ $currentUsername = getCurrentUsername();
                         </form>
                     </div>
                 </div>
+
+                <?php elseif ($currentSection === 'update'): ?>
+                <!-- 当前版本信息卡 -->
+                <div class="row">
+                    <div class="col-lg-6 col-12">
+                        <div class="small-box bg-info">
+                            <div class="inner">
+                                <h3><?php echo htmlspecialchars(APP_VERSION); ?></h3>
+                                <p>当前版本</p>
+                            </div>
+                            <div class="icon"><i class="fas fa-code-branch"></i></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6 col-12">
+                        <div class="small-box bg-warning" id="latestVersionBox">
+                            <div class="inner">
+                                <h3 id="latestVersionText">检查中...</h3>
+                                <p id="latestVersionLabel">最新版本</p>
+                            </div>
+                            <div class="icon"><i class="fas fa-cloud-download-alt"></i></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 版本检查与一键更新 -->
+                <div class="card" id="updateCard">
+                    <div class="card-header">
+                        <h3 class="card-title">版本检查与更新</h3>
+                        <div class="card-tools">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="checkUpdate(true)">
+                                <i class="fas fa-redo"></i> 重新检查
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group" id="releaseInfoBox" style="display:none;">
+                            <label>最新版本发布信息</label>
+                            <div class="card bg-light p-3" id="releaseDetails">
+                                <div class="mb-2">
+                                    <strong id="releaseName"></strong>
+                                    <small class="text-muted ml-2" id="releaseDate"></small>
+                                </div>
+                                <div class="mb-2">
+                                    <a id="releaseUrl" href="#" target="_blank" class="btn btn-outline-primary btn-sm">
+                                        <i class="fab fa-github"></i> 查看 GitHub Release
+                                    </a>
+                                </div>
+                                <pre id="releaseBody" style="white-space:pre-wrap;background:#f8f9fa;padding:10px;border-radius:4px;"></pre>
+                            </div>
+                        </div>
+
+                        <div id="envWarningBox"></div>
+
+                        <div class="alert alert-info" id="updateStatus">
+                            <i class="icon fas fa-info-circle"></i> 正在检查 GitHub 最新版本...
+                        </div>
+
+                        <div class="mt-3" id="updateActionBox" style="display:none;">
+                            <button type="button" class="btn btn-success btn-lg" id="updateBtn" onclick="doUpdate()">
+                                <i class="fas fa-download"></i> 立即更新到最新版本
+                            </button>
+                            <small class="form-text text-muted mt-2">
+                                更新前将自动备份当前文件；如果更新失败将自动回滚。
+                            </small>
+                        </div>
+
+                        <div class="progress mt-3" id="progressBar" style="display:none;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="progressBarInner" style="width:100%"></div>
+                        </div>
+
+                        <div class="mt-3" id="updateLogBox" style="display:none;">
+                            <label>更新日志</label>
+                            <pre id="updateLog" class="bg-dark text-light p-3 rounded" style="max-height:300px;overflow:auto;font-size:13px;"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 备份管理 -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h3 class="card-title">备份管理</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">每次自动更新时会在更新前创建备份。您也可以在此处手动从任一备份恢复系统。</p>
+                        <div id="backupList">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> 正在加载备份列表...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 更新历史日志 -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h3 class="card-title">更新历史</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="updateHistoryList">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> 正在加载更新历史...</div>
+                        </div>
+                    </div>
+                </div>
                 <?php endif; ?>
 
             </div>
@@ -622,7 +730,232 @@ $(document).ready(function() {
             selectAll.checked = false;
         }
     });
-});
+
+    // ============================================
+    // 系统更新相关 JavaScript
+    // ============================================
+    var updateCsrfToken = '<?php echo $csrfToken; ?>';
+    var currentVersion = '<?php echo htmlspecialchars(APP_VERSION); ?>';
+
+    function setUpdateStatus(message, type) {
+        var box = document.getElementById('updateStatus');
+        if (!box) return;
+        var iconClass = 'fas fa-info-circle';
+        var alertClass = 'alert alert-info';
+        if (type === 'success') { alertClass = 'alert alert-success'; iconClass = 'fas fa-check-circle'; }
+        else if (type === 'error') { alertClass = 'alert alert-danger'; iconClass = 'fas fa-exclamation-triangle'; }
+        else if (type === 'warning') { alertClass = 'alert alert-warning'; iconClass = 'fas fa-exclamation-circle'; }
+        box.className = alertClass;
+        box.innerHTML = '<i class="icon ' + iconClass + '"></i> ' + message;
+    }
+
+    function appendUpdateLog(line) {
+        var logBox = document.getElementById('updateLog');
+        if (logBox) {
+            logBox.textContent += line + '\n';
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+    }
+
+    function checkUpdate(force) {
+        var latestText = document.getElementById('latestVersionText');
+        if (latestText) latestText.textContent = '检查中...';
+        setUpdateStatus('正在检查 GitHub 最新版本...', 'info');
+        document.getElementById('updateActionBox').style.display = 'none';
+        document.getElementById('releaseInfoBox').style.display = 'none';
+        document.getElementById('envWarningBox').innerHTML = '';
+
+        var url = 'update.php?action=check' + (force ? '&force=1' : '');
+        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.success) {
+                    latestText.textContent = '未知';
+                    setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
+                    return;
+                }
+                var latest = data.latest;
+                document.getElementById('latestVersionText').textContent = latest;
+
+                // 环境警告
+                if (data.env && !data.env.ok) {
+                    var html = '<div class="alert alert-danger">';
+                    html += '<i class="icon fas fa-exclamation-triangle"></i> 环境不满足更新要求:<ul class="mt-2">';
+                    (data.env.errors || []).forEach(function (m) { html += '<li>' + m + '</li>'; });
+                    html += '</ul></div>';
+                    document.getElementById('envWarningBox').innerHTML = html;
+                } else if (data.env && data.env.warnings && data.env.warnings.length > 0) {
+                    var whtml = '<div class="alert alert-warning">';
+                    whtml += '<i class="icon fas fa-exclamation"></i> 警告:<ul class="mt-2">';
+                    (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + m + '</li>'; });
+                    whtml += '</ul></div>';
+                    document.getElementById('envWarningBox').innerHTML = whtml;
+                }
+
+                if (data.has_update) {
+                    setUpdateStatus(
+                        '发现新版本 <strong>' + latest + '</strong>（当前版本 ' + data.current + '）。建议立即更新。',
+                        'success'
+                    );
+                    document.getElementById('updateActionBox').style.display = 'block';
+                    if (data.release) {
+                        document.getElementById('releaseName').textContent = data.release.name || latest;
+                        document.getElementById('releaseDate').textContent = data.release.published_at ? '  (' + data.release.published_at + ')' : '';
+                        document.getElementById('releaseUrl').href = data.release.html_url || '#';
+                        document.getElementById('releaseBody').textContent = data.release.body || '无发布说明';
+                        document.getElementById('releaseInfoBox').style.display = 'block';
+                    }
+                } else {
+                        setUpdateStatus('当前已是最新版本（' + data.current + '）', 'info');
+                        document.getElementById('latestVersionText').textContent = '已是最新';
+                    }
+            })
+            .catch(function(err) {
+                document.getElementById('latestVersionText').textContent = '失败';
+                setUpdateStatus('网络请求失败，请检查网络或稍后再试', 'error');
+            });
+    }
+
+    function doUpdate() {
+        if (!confirm('确定要执行自动更新吗？此操作将下载并覆盖项目文件。更新过程中请不要关闭页面。')) {
+            return;
+        }
+        var btn = document.getElementById('updateBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+        document.getElementById('progressBar').style.display = 'block';
+        document.getElementById('updateLogBox').style.display = 'block';
+        document.getElementById('updateLog').textContent = '';
+        setUpdateStatus('正在执行更新，这可能需要几分钟时间...', 'info');
+        appendUpdateLog('[开始] 发起更新请求...');
+
+        var formData = new FormData();
+        formData.append('action', 'update');
+        formData.append('csrf_token', updateCsrfToken);
+
+        fetch('update.php?action=update', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.logs && Array.isArray(data.logs)) {
+                data.logs.forEach(function(line) { appendUpdateLog(line); });
+            }
+            if (data.success) {
+                setUpdateStatus('更新成功！当前版本已升级到 ' + (data.to_version || '最新版本') + '。请刷新页面确认。', 'success');
+                appendUpdateLog('[完成] 更新成功！');
+                btn.innerHTML = '<i class="fas fa-check"></i> 更新成功';
+                btn.className = 'btn btn-lg btn-success';
+                // 3秒后自动刷新
+                setTimeout(function() { location.reload(); }, 3000);
+            } else {
+                var msg = data.error || (data.errors && data.errors.join('；')) || '更新失败';
+                setUpdateStatus('更新失败: ' + msg, 'error');
+                appendUpdateLog('[失败] ' + msg);
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-download"></i> 重试更新';
+                btn.className = 'btn btn-lg btn-success';
+            }
+            document.getElementById('progressBar').style.display = 'none';
+            loadBackupList();
+            loadUpdateHistory();
+        })
+        .catch(function(err) {
+            setUpdateStatus('更新请求失败，请检查服务器日志', 'error');
+            document.getElementById('progressBar').style.display = 'none';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download"></i> 重新尝试';
+        });
+    }
+
+    function loadBackupList() {
+        fetch('update.php?action=backups', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var box = document.getElementById('backupList');
+                if (!data.success || !data.backups || data.backups.length === 0) {
+                    box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无备份文件</div>';
+                    return;
+                }
+                var html = '<table class="table table-striped"><thead><tr><th>文件名</th><th>大小 (KB)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+                data.backups.forEach(function(b) {
+                    html += '<tr>';
+                    html += '<td>' + b.filename + '</td>';
+                    html += '<td>' + b.size + '</td>';
+                    html += '<td>' + b.time + '</td>';
+                    html += '<td><button type="button" class="btn btn-sm btn-warning" onclick="doRollback(\'' + b.filename + '\')">';
+                    html += '<i class="fas fa-undo"></i> 从此备份恢复</button></td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                box.innerHTML = html;
+            })
+            .catch(function() {
+                document.getElementById('backupList').innerHTML = '<div class="text-danger">加载失败</div>';
+            });
+    }
+
+    function loadUpdateHistory() {
+        fetch('update.php?action=logs', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var box = document.getElementById('updateHistoryList');
+                if (!data.success || !data.logs || data.logs.length === 0) {
+                    box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
+                    return;
+                }
+                var html = '<table class="table table-striped"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
+                data.logs.forEach(function(log) {
+                    var statusClass = 'badge-info';
+                    var statusText = log.status;
+                    if (log.status === 'success') { statusClass = 'badge-success'; statusText = '成功'; }
+                    else if (log.status === 'failed') { statusClass = 'badge-danger'; statusText = '失败'; }
+                    else if (log.status === 'rollback') { statusClass = 'badge-warning'; statusText = '回滚'; }
+                    html += '<tr>';
+                    html += '<td>' + (log.timestamp || '-') + '</td>';
+                    html += '<td>' + (log.from_version || '-') + '</td>';
+                    html += '<td>' + (log.to_version || '-') + '</td>';
+                    html += '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
+                    html += '<td>' + (log.username || '-') + '</td>';
+                    html += '<td>' + (log.message || '-') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                box.innerHTML = html;
+            })
+            .catch(function() {
+                document.getElementById('updateHistoryList').innerHTML = '<div class="text-danger">加载失败</div>';
+            });
+    }
+
+    function doRollback(filename) {
+        if (!confirm('确定要从备份文件恢复吗？这将覆盖当前所有文件。此操作不可撤销。')) return;
+        var formData = new FormData();
+        formData.append('action', 'rollback');
+        formData.append('backup', filename);
+        formData.append('csrf_token', updateCsrfToken);
+        fetch('update.php?action=rollback', { method: 'POST', body: formData })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    alert('回滚成功！即将刷新页面...');
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else {
+                    alert('回滚失败: ' + (data.error || '未知错误'));
+                }
+            })
+            .catch(function(err) {
+                alert('请求失败: ' + err);
+            });
+    }
+
+    // 自动加载：进入更新页面后立即检查版本
+    if ('<?php echo $currentSection; ?>' === 'update') {
+        checkUpdate(false);
+        loadBackupList();
+        loadUpdateHistory();
+    }
 </script>
 </body>
 </html>
