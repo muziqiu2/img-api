@@ -343,7 +343,7 @@ $currentUsername = getCurrentUsername();
                         <h3 class="card-title">
                             <?php echo $currentType === 'pc' ? 'PC端' : '移动端'; ?>图片链接列表 (共 <?php echo $imageData['total']; ?> 个)
                         </h3>
-                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected(<?php echo json_encode($currentType); ?>, <?php echo json_encode($csrfToken); ?>)" style="display:none;">
+                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected(<?php echo htmlspecialchars(json_encode($currentType), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($csrfToken), ENT_QUOTES); ?>)" style="display:none;">
                             <i class="fas fa-trash"></i> 删除选中
                         </button>
                     </div>
@@ -366,7 +366,7 @@ $currentUsername = getCurrentUsername();
                                         </a>
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm(<?php echo json_encode($url); ?>, <?php echo json_encode($currentType); ?>, <?php echo json_encode($csrfToken); ?>)">
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm(<?php echo htmlspecialchars(json_encode($url), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($currentType), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($csrfToken), ENT_QUOTES); ?>)">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
