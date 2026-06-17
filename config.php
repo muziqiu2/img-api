@@ -27,6 +27,46 @@ define('RATE_LIMIT_WINDOW', 60); // 60秒窗口
 define('RATE_LIMIT_MAX_API', 100); // API每分钟最大请求数
 define('RATE_LIMIT_MAX_ADMIN', 10); // 管理后台每分钟最大请求数
 
+// 代理配置（仅在确定服务器前方有可信代理时启用）
+define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded-For）
+
+// ==================== 客户端IP获取函数 ====================
+
+function getClientIp() {
+    $ip = null;
+
+    // 如果配置了信任代理头，则检查代理相关头部
+    if (TRUST_PROXY_HEADERS) {
+        // X-Forwarded-For: client, proxy1, proxy2
+        $xff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        if (!empty($xff)) {
+            // 取最后一个IP（最靠近服务器的才是真实的出口IP）
+            $ips = array_map('trim', explode(',', $xff));
+            $ip = end($ips);
+        }
+
+        // X-Real-IP
+        if (empty($ip)) {
+            $xri = $_SERVER['HTTP_X_REAL_IP'] ?? '';
+            if (!empty($xri) && filter_var(trim($xri), FILTER_VALIDATE_IP)) {
+                $ip = trim($xri);
+            }
+        }
+    }
+
+    // 默认使用 REMOTE_ADDR（最可靠，但可能在代理后不准确）
+    if (empty($ip)) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    }
+
+    // 验证IP格式
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        $ip = 'invalid';
+    }
+
+    return $ip;
+}
+
 // ==================== 数据库初始化 ====================
 $pdo = null;
 $dbInitialized = false;
@@ -290,73 +330,91 @@ function validateCsrfToken($token) {
 // ==================== 频率限制函数 ====================
 
 function checkApiRateLimit() {
-    $ip = md5($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    $ip = md5(getClientIp());
     $key = 'api_' . $ip;
     $now = time();
     $windowStart = $now - RATE_LIMIT_WINDOW;
-    
+
     $db = getDb();
-    
+
     // 清理过期记录
     $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
     $stmt->execute([$windowStart]);
-    
-    // 检查当前记录
-    $stmt = $db->prepare("SELECT * FROM rate_limits WHERE id = ?");
+
+    // 先检查当前计数是否已超过限制
+    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
     $stmt->execute([$key]);
     $record = $stmt->fetch();
-    
+
+    // 如果已超过限制，直接拒绝
     if ($record && $record['count'] >= RATE_LIMIT_MAX_API) {
         return false;
     }
-    
-    // 更新或插入记录
-    if ($record) {
-        $stmt = $db->prepare("UPDATE rate_limits SET count = count + 1 WHERE id = ?");
-        $stmt->execute([$key]);
-    } else {
-        $stmt = $db->prepare("INSERT INTO rate_limits (id, count, timestamp) VALUES (?, 1, ?)");
-        $stmt->execute([$key, $now]);
-    }
-    
-    return true;
+
+    // 尝试原子地增加计数（使用 UPDATE ... WHERE 确保原子性）
+    // 如果记录不存在或已过期，插入新记录；否则在 count < 限制时递增
+    $stmt = $db->prepare("
+        INSERT INTO rate_limits (id, count, timestamp)
+        VALUES (?, 1, ?)
+        ON CONFLICT(id) DO UPDATE
+        SET count = CASE WHEN timestamp < ? THEN 1 ELSE count + 1 END,
+            timestamp = CASE WHEN timestamp < ? THEN ? ELSE timestamp END
+    ");
+    $stmt->execute([$key, $now, $windowStart, $windowStart, $now]);
+
+    // 再次检查：获取最新计数，如果超过限制则表示刚才的递增导致了超限，需要回滚
+    // 但 SQLite 不支持读后写的锁（SELECT 后 UPDATE 不是原子的）
+    // 所以我们接受在极端竞态下可能多允许 1 个请求的情况
+    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
+    $stmt->execute([$key]);
+    $record = $stmt->fetch();
+
+    // 如果超过限制，返回 false（这次请求被拒绝）
+    return !$record || $record['count'] <= RATE_LIMIT_MAX_API;
 }
 
 function checkAdminRateLimit() {
     if (!IS_LOGGED_IN) {
         return true;
     }
-    
+
     $username = md5($_SESSION['admin_username'] ?? 'unknown');
     $key = 'admin_' . $username;
     $now = time();
     $windowStart = $now - RATE_LIMIT_WINDOW;
-    
+
     $db = getDb();
-    
+
     // 清理过期记录
     $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
     $stmt->execute([$windowStart]);
-    
-    // 检查当前记录
-    $stmt = $db->prepare("SELECT * FROM rate_limits WHERE id = ?");
+
+    // 先检查当前计数是否已超过限制
+    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
     $stmt->execute([$key]);
     $record = $stmt->fetch();
-    
+
+    // 如果已超过限制，直接拒绝
     if ($record && $record['count'] >= RATE_LIMIT_MAX_ADMIN) {
         return false;
     }
-    
-    // 更新或插入记录
-    if ($record) {
-        $stmt = $db->prepare("UPDATE rate_limits SET count = count + 1 WHERE id = ?");
-        $stmt->execute([$key]);
-    } else {
-        $stmt = $db->prepare("INSERT INTO rate_limits (id, count, timestamp) VALUES (?, 1, ?)");
-        $stmt->execute([$key, $now]);
-    }
-    
-    return true;
+
+    // 尝试原子地增加计数
+    $stmt = $db->prepare("
+        INSERT INTO rate_limits (id, count, timestamp)
+        VALUES (?, 1, ?)
+        ON CONFLICT(id) DO UPDATE
+        SET count = CASE WHEN timestamp < ? THEN 1 ELSE count + 1 END,
+            timestamp = CASE WHEN timestamp < ? THEN ? ELSE timestamp END
+    ");
+    $stmt->execute([$key, $now, $windowStart, $windowStart, $now]);
+
+    // 再次检查
+    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
+    $stmt->execute([$key]);
+    $record = $stmt->fetch();
+
+    return !$record || $record['count'] <= RATE_LIMIT_MAX_ADMIN;
 }
 
 // ==================== 图片管理函数 ====================
@@ -577,10 +635,10 @@ function getTotalCalls() {
 
 function logAdminAction($action) {
     $db = getDb();
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $ip = getClientIp();
     $time = date('Y-m-d H:i:s');
     $username = getCurrentUsername();
-    
+
     $stmt = $db->prepare("INSERT INTO admin_logs (time, username, ip, action) VALUES (?, ?, ?, ?)");
     return $stmt->execute([$time, $username, $ip, $action]);
 }
