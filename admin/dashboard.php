@@ -106,11 +106,19 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection === 'user') {
             $message = "安全验证失败，请刷新页面重试";
             $messageType = 'error';
         } else {
+            $currentPassword = trim($_POST['current_password'] ?? '');
             $newUsername = trim($_POST['new_username']);
             $newPassword = trim($_POST['new_password']);
             $confirmPassword = trim($_POST['confirm_password']);
-            
-            if (empty($newUsername)) {
+
+            // 验证原密码
+            if (empty($currentPassword)) {
+                $message = "请输入原密码";
+                $messageType = 'error';
+            } elseif (!verifyPassword($currentPassword)) {
+                $message = "原密码不正确";
+                $messageType = 'error';
+            } elseif (empty($newUsername)) {
                 $message = "用户名不能为空";
                 $messageType = 'error';
             } elseif (strlen($newUsername) < 3 || strlen($newUsername) > 20) {
@@ -442,6 +450,10 @@ $currentUsername = getCurrentUsername();
                     <div class="card-body">
                         <form method="post" action="?section=user">
                             <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
+                            <div class="form-group">
+                                <label for="current_password">原密码</label>
+                                <input type="password" class="form-control" id="current_password" name="current_password" placeholder="请输入原密码" required>
+                            </div>
                             <div class="form-group">
                                 <label for="new_username">用户名</label>
                                 <input type="text" class="form-control" id="new_username" name="new_username" value="<?php echo htmlspecialchars($currentUsername); ?>" required>
