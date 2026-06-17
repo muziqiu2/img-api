@@ -1108,7 +1108,23 @@ function clearUpdateCheckCache() {
     }
 }
 
-// 检查服务器环境是否满足更新要求（返回 [success, messages]
+// 检查目录是否可写（通过实际写入测试文件，避免 is_writable 误报）
+function isDirReallyWritable($dir) {
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0755, true)) {
+            return false;
+        }
+    }
+    $testFile = rtrim($dir, '/\\') . '/.write_test_' . mt_rand() . '.tmp';
+    $result = @file_put_contents($testFile, 'test');
+    if ($result !== false) {
+        @unlink($testFile);
+        return true;
+    }
+    return false;
+}
+
+// 检查服务器环境是否满足更新要求
 function checkUpdateEnvironment() {
     $errors = [];
     $warnings = [];
@@ -1121,11 +1137,15 @@ function checkUpdateEnvironment() {
         $errors[] = '需要 curl 扩展或 allow_url_fopen 开启（用于下载更新包）';
     }
 
-    // 检查目录可写
-    $writableDirs = [__DIR__, __DIR__ . '/admin', UPDATE_BACKUP_DIR, UPDATE_CACHE_DIR];
-    foreach ($writableDirs as $dir) {
-        if (!is_writable($dir)) {
-            $errors[] = '目录不可写: ' . basename($dir) . '（更新需要写权限）';
+    // 检查目录可写（只检查真正需要写入的目录，并通过实际写入测试）
+    $writableDirs = [
+        UPDATE_BACKUP_DIR => '备份目录',
+        UPDATE_CACHE_DIR => '更新缓存目录',
+        CACHE_DIR => '缓存目录',
+    ];
+    foreach ($writableDirs as $dir => $label) {
+        if (!isDirReallyWritable($dir)) {
+            $errors[] = '目录不可写: ' . $label . '（' . basename($dir) . '，更新需要写权限）';
         }
     }
 

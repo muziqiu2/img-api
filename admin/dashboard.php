@@ -757,6 +757,57 @@ $(document).ready(function() {
         }
     }
 
+    // 前端版本检查缓存配置（5 分钟内不重复请求，避免频繁调用 GitHub API）
+    var UPDATE_CHECK_LOCAL_CACHE_TTL = 5 * 60 * 1000;
+    var UPDATE_CHECK_LOCAL_CACHE_KEY = 'app_update_check_cache_v1';
+
+    // 渲染版本检查结果到页面（被 checkUpdate 和本地缓存共用）
+    function renderUpdateResult(data, fromCache, cacheTime) {
+        var latestText = document.getElementById('latestVersionText');
+        if (!data.success) {
+            latestText.textContent = '未知';
+            setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
+            return;
+        }
+        var latest = data.latest;
+        latestText.textContent = latest;
+
+        // 环境警告
+        if (data.env && !data.env.ok) {
+            var html = '<div class="alert alert-danger">';
+            html += '<i class="icon fas fa-exclamation-triangle"></i> 环境不满足更新要求:<ul class="mt-2">';
+            (data.env.errors || []).forEach(function (m) { html += '<li>' + m + '</li>'; });
+            html += '</ul></div>';
+            document.getElementById('envWarningBox').innerHTML = html;
+        } else if (data.env && data.env.warnings && data.env.warnings.length > 0) {
+            var whtml = '<div class="alert alert-warning">';
+            whtml += '<i class="icon fas fa-exclamation"></i> 警告:<ul class="mt-2">';
+            (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + m + '</li>'; });
+            whtml += '</ul></div>';
+            document.getElementById('envWarningBox').innerHTML = whtml;
+        }
+
+        if (data.has_update) {
+            var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
+            setUpdateStatus(
+                '发现新版本 <strong>' + latest + '</strong>（当前版本 ' + data.current + '）。建议立即更新。' + cacheHint,
+                'success'
+            );
+            document.getElementById('updateActionBox').style.display = 'block';
+            if (data.release) {
+                document.getElementById('releaseName').textContent = data.release.name || latest;
+                document.getElementById('releaseDate').textContent = data.release.published_at ? '  (' + data.release.published_at + ')' : '';
+                document.getElementById('releaseUrl').href = data.release.html_url || '#';
+                document.getElementById('releaseBody').textContent = data.release.body || '无发布说明';
+                document.getElementById('releaseInfoBox').style.display = 'block';
+            }
+        } else {
+            var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
+            setUpdateStatus('当前已是最新版本（' + data.current + '）' + cacheHint, 'info');
+            document.getElementById('latestVersionText').textContent = '已是最新';
+        }
+    }
+
     function checkUpdate(force) {
         var latestText = document.getElementById('latestVersionText');
         if (latestText) latestText.textContent = '检查中...';
@@ -764,6 +815,26 @@ $(document).ready(function() {
         document.getElementById('updateActionBox').style.display = 'none';
         document.getElementById('releaseInfoBox').style.display = 'none';
         document.getElementById('envWarningBox').innerHTML = '';
+
+        // 非强制模式下优先使用前端 localStorage 缓存（5 分钟内避免频繁请求）
+        if (!force) {
+            try {
+                var rawCache = localStorage.getItem(UPDATE_CHECK_LOCAL_CACHE_KEY);
+                if (rawCache) {
+                    var cached = JSON.parse(rawCache);
+                    var age = Date.now() - (cached.timestamp || 0);
+                    if (cached.data && cached.data.success && age < UPDATE_CHECK_LOCAL_CACHE_TTL) {
+                        var cacheTimeStr = new Date(cached.timestamp).toLocaleString();
+                        renderUpdateResult(cached.data, true, cacheTimeStr);
+                        return;
+                    }
+                    // 缓存过期，清理
+                    localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY);
+                }
+            } catch (e) {
+                // localStorage 不可用，走正常请求
+            }
+        }
 
         var url = 'update.php?action=check' + (force ? '&force=1' : '');
         fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
@@ -774,41 +845,14 @@ $(document).ready(function() {
                     setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
                     return;
                 }
-                var latest = data.latest;
-                document.getElementById('latestVersionText').textContent = latest;
-
-                // 环境警告
-                if (data.env && !data.env.ok) {
-                    var html = '<div class="alert alert-danger">';
-                    html += '<i class="icon fas fa-exclamation-triangle"></i> 环境不满足更新要求:<ul class="mt-2">';
-                    (data.env.errors || []).forEach(function (m) { html += '<li>' + m + '</li>'; });
-                    html += '</ul></div>';
-                    document.getElementById('envWarningBox').innerHTML = html;
-                } else if (data.env && data.env.warnings && data.env.warnings.length > 0) {
-                    var whtml = '<div class="alert alert-warning">';
-                    whtml += '<i class="icon fas fa-exclamation"></i> 警告:<ul class="mt-2">';
-                    (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + m + '</li>'; });
-                    whtml += '</ul></div>';
-                    document.getElementById('envWarningBox').innerHTML = whtml;
-                }
-
-                if (data.has_update) {
-                    setUpdateStatus(
-                        '发现新版本 <strong>' + latest + '</strong>（当前版本 ' + data.current + '）。建议立即更新。',
-                        'success'
-                    );
-                    document.getElementById('updateActionBox').style.display = 'block';
-                    if (data.release) {
-                        document.getElementById('releaseName').textContent = data.release.name || latest;
-                        document.getElementById('releaseDate').textContent = data.release.published_at ? '  (' + data.release.published_at + ')' : '';
-                        document.getElementById('releaseUrl').href = data.release.html_url || '#';
-                        document.getElementById('releaseBody').textContent = data.release.body || '无发布说明';
-                        document.getElementById('releaseInfoBox').style.display = 'block';
-                    }
-                } else {
-                        setUpdateStatus('当前已是最新版本（' + data.current + '）', 'info');
-                        document.getElementById('latestVersionText').textContent = '已是最新';
-                    }
+                // 写入前端缓存（仅保存成功的响应，避免缓存错误）
+                try {
+                    localStorage.setItem(UPDATE_CHECK_LOCAL_CACHE_KEY, JSON.stringify({
+                        timestamp: Date.now(),
+                        data: data,
+                    }));
+                } catch (e) {}
+                renderUpdateResult(data, false, null);
             })
             .catch(function(err) {
                 document.getElementById('latestVersionText').textContent = '失败';
@@ -843,6 +887,8 @@ $(document).ready(function() {
                 data.logs.forEach(function(line) { appendUpdateLog(line); });
             }
             if (data.success) {
+                // 更新成功，清理前端缓存，确保下次进入页面获取最新版本信息
+                try { localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY); } catch (e) {}
                 setUpdateStatus('更新成功！当前版本已升级到 ' + (data.to_version || '最新版本') + '。请刷新页面确认。', 'success');
                 appendUpdateLog('[完成] 更新成功！');
                 btn.innerHTML = '<i class="fas fa-check"></i> 更新成功';
