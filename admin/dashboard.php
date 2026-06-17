@@ -343,7 +343,7 @@ $currentUsername = getCurrentUsername();
                         <h3 class="card-title">
                             <?php echo $currentType === 'pc' ? 'PC端' : '移动端'; ?>图片链接列表 (共 <?php echo $imageData['total']; ?> 个)
                         </h3>
-                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected()" style="display:none;">
+                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected(<?php echo json_encode($currentType); ?>, <?php echo json_encode($csrfToken); ?>)" style="display:none;">
                             <i class="fas fa-trash"></i> 删除选中
                         </button>
                     </div>
@@ -359,14 +359,14 @@ $currentUsername = getCurrentUsername();
                             <tbody>
                                 <?php foreach ($urls as $url): ?>
                                 <tr>
-                                    <td><input type="checkbox" class="url-checkbox" value="<?php echo htmlspecialchars(addslashes($url)); ?>" onchange="updateDeleteButton()"></td>
+                                    <td><input type="checkbox" class="url-checkbox" value="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>" onchange="updateDeleteButton()"></td>
                                     <td>
                                         <a href="<?php echo htmlspecialchars($url); ?>" target="_blank" title="<?php echo htmlspecialchars($url); ?>">
                                             <?php echo htmlspecialchars(strlen($url) > 80 ? substr($url, 0, 80) . '...' : $url); ?>
                                         </a>
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm('<?php echo htmlspecialchars(addslashes($url)); ?>', '<?php echo $currentType; ?>', '<?php echo $csrfToken; ?>')">
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm(<?php echo json_encode($url); ?>, <?php echo json_encode($currentType); ?>, <?php echo json_encode($csrfToken); ?>)">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
@@ -541,42 +541,40 @@ function updateDeleteButton() {
     }
 }
 
-function deleteSelected() {
+function deleteSelected(type, token) {
     if (selectedUrls.length === 0) return;
+    pendingDeleteUrl = 'MULTI_DELETE';
+    pendingDeleteType = type;
+    pendingDeleteToken = token;
     $('#confirmMessage').text('确定要删除选中的 ' + selectedUrls.length + ' 个图片链接吗？');
     $('#confirmModal').modal('show');
 }
 
 function executeDelete() {
-    if (pendingDeleteUrl) {
-        if (pendingDeleteUrl === 'MULTI_DELETE') {
-            // 多选删除
-            var form = document.createElement('form');
-            form.method = 'post';
-            form.action = '?section=management&type=' + encodeURIComponent(pendingDeleteType);
-            
-            var csrfInput = document.createElement('input');
-            csrfInput.type = 'hidden';
-            csrfInput.name = 'csrf_token';
-            csrfInput.value = pendingDeleteToken;
-            form.appendChild(csrfInput);
-            
-            selectedUrls.forEach(function(url) {
-                var input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'delete_urls[]';
-                input.value = url;
-                form.appendChild(input);
-            });
-            
-            document.body.appendChild(form);
-            form.submit();
-        } else if (pendingDeleteUrl === 'CLEAR_ALL') {
-            $('#clearForm').submit();
-        } else {
-            var redirectUrl = '?section=management&type=' + encodeURIComponent(pendingDeleteType) + '&delete=' + encodeURIComponent(pendingDeleteUrl) + '&token=' + encodeURIComponent(pendingDeleteToken);
-            window.location.href = redirectUrl;
-        }
+    if (pendingDeleteUrl === 'MULTI_DELETE') {
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = '?section=management&type=' + encodeURIComponent(pendingDeleteType);
+
+        var csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = pendingDeleteToken;
+        form.appendChild(csrfInput);
+
+        selectedUrls.forEach(function(url) {
+            var input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'delete_urls[]';
+            input.value = url;
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    } else if (pendingDeleteUrl) {
+        var redirectUrl = '?section=management&type=' + encodeURIComponent(pendingDeleteType) + '&delete=' + encodeURIComponent(pendingDeleteUrl) + '&token=' + encodeURIComponent(pendingDeleteToken);
+        window.location.href = redirectUrl;
     }
     $('#confirmModal').modal('hide');
 }
@@ -599,6 +597,18 @@ $(document).ready(function() {
         pendingDeleteType = '';
         pendingDeleteToken = '';
         selectedUrls = [];
+        var deleteBtn = document.getElementById('deleteSelectedBtn');
+        if (deleteBtn) {
+            deleteBtn.style.display = 'none';
+        }
+        var checkboxes = document.querySelectorAll('.url-checkbox');
+        checkboxes.forEach(function(cb) {
+            cb.checked = false;
+        });
+        var selectAll = document.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.checked = false;
+        }
     });
 });
 </script>

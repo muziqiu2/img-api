@@ -118,8 +118,7 @@ if (isAccountLocked()) {
             
             <div class="mt-3 text-center">
                 <p class="text-muted" style="font-size: 0.85rem;">
-                    默认账号: admin | 默认密码: 123456<br>
-                    登录后请及时修改密码
+                    首次使用请查阅项目说明文档配置管理员账号
                 </p>
             </div>
         </div>

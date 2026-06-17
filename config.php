@@ -29,27 +29,33 @@ define('RATE_LIMIT_MAX_ADMIN', 10); // 管理后台每分钟最大请求数
 
 // ==================== 数据库初始化 ====================
 $pdo = null;
+$dbInitialized = false;
 
 function getDb() {
-    global $pdo;
-    
+    global $pdo, $dbInitialized;
+
     if ($pdo === null) {
         try {
             $pdo = new PDO('sqlite:' . DB_FILE);
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            initDatabase();
         } catch (PDOException $e) {
             die('数据库连接失败: ' . $e->getMessage());
         }
     }
-    
+
+    if (!$dbInitialized) {
+        $dbInitialized = true;
+        initDatabase();
+    }
+
     return $pdo;
 }
 
 function initDatabase() {
-    $db = getDb();
-    
+    global $pdo;
+    $db = $pdo;
+
     // 用户配置表
     $db->exec("
         CREATE TABLE IF NOT EXISTS user_config (
@@ -61,7 +67,7 @@ function initDatabase() {
             locked_until INTEGER DEFAULT 0
         )
     ");
-    
+
     // 图片URL表
     $db->exec("
         CREATE TABLE IF NOT EXISTS image_urls (
@@ -71,10 +77,10 @@ function initDatabase() {
             created_at INTEGER DEFAULT (strftime('%s', 'now'))
         )
     ");
-    
+
     // 创建索引
     $db->exec("CREATE INDEX IF NOT EXISTS idx_image_urls_type ON image_urls(type)");
-    
+
     // 调用统计表
     $db->exec("
         CREATE TABLE IF NOT EXISTS call_stats (
@@ -89,10 +95,10 @@ function initDatabase() {
             img_count INTEGER DEFAULT 0
         )
     ");
-    
+
     // 创建索引
     $db->exec("CREATE INDEX IF NOT EXISTS idx_call_stats_date ON call_stats(date)");
-    
+
     // 操作日志表
     $db->exec("
         CREATE TABLE IF NOT EXISTS admin_logs (
@@ -103,7 +109,7 @@ function initDatabase() {
             action TEXT NOT NULL
         )
     ");
-    
+
     // 频率限制表
     $db->exec("
         CREATE TABLE IF NOT EXISTS rate_limits (
@@ -112,12 +118,12 @@ function initDatabase() {
             timestamp INTEGER DEFAULT 0
         )
     ");
-    
+
     // 确保默认用户存在
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM user_config");
     $stmt->execute();
     $result = $stmt->fetch();
-    
+
     if ($result['cnt'] == 0) {
         $stmt = $db->prepare("
             INSERT INTO user_config (username, password_hash, login_attempts, last_attempt, locked_until)
@@ -128,35 +134,27 @@ function initDatabase() {
 }
 
 // 定义是否在管理区域
-$isAdminArea = strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false;
+$isAdminArea = strpos($_SERVER['SCRIPT_NAME'] ?? '', '/admin/') !== false;
 
 // 仅在管理区域启动会话
 if ($isAdminArea) {
-    // 设置 session 配置
-    ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_samesite', 'Lax');
-    ini_set('session.use_strict_mode', 0);
-    
-    // 设置 session cookie 路径为根路径，确保全站共享
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path' => '/',
-        'domain' => '',
-        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-        'httponly' => true,
-        'samesite' => 'Lax'
-    ]);
-    
-    // 启动 session
+    // 如果会话尚未启动，设置cookie参数并启动
     if (session_status() === PHP_SESSION_NONE) {
+        // 设置 session cookie 路径为根路径，确保全站共享
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path' => '/',
+            'domain' => '',
+            'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
         session_start();
     }
-    
-    // 登录状态检查
+
+    // 检查会话超时（未设置登录时间视为首次登录，不超时）
     $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
-    
-    // 检查会话超时
-    if ($isLoggedIn && time() - ($_SESSION['admin_login_time'] ?? time()) > SESSION_TIMEOUT) {
+    if ($isLoggedIn && !empty($_SESSION['admin_login_time']) && (time() - $_SESSION['admin_login_time'] > SESSION_TIMEOUT)) {
         $_SESSION = [];
         session_destroy();
         $isLoggedIn = false;
@@ -273,7 +271,11 @@ function getRemainingAttempts() {
 
 function generateCsrfToken() {
     if (!isset($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        try {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        } catch (Exception $e) {
+            $_SESSION['csrf_token'] = bin2hex(openssl_random_pseudo_bytes(32));
+        }
     }
     return $_SESSION['csrf_token'];
 }
@@ -620,17 +622,34 @@ function fetchRemoteImage($url) {
     if (!filter_var($url, FILTER_VALIDATE_URL)) {
         return false;
     }
-    
+
     $parsed = parse_url($url);
     $scheme = strtolower($parsed['scheme'] ?? '');
     $host = $parsed['host'] ?? '';
-    
+
     if (!in_array($scheme, ['http', 'https'])) {
         return false;
     }
-    
+
+    if (empty($host)) {
+        return false;
+    }
+
+    // 禁止访问本地服务
+    $lowerHost = strtolower($host);
+    $localHostnames = ['localhost', 'localhost.localdomain', 'local', '127.0.0.1', '0.0.0.0'];
+    foreach ($localHostnames as $lh) {
+        if ($lowerHost === $lh) {
+            return false;
+        }
+    }
+
+    // 解析IP并验证
     $ip = gethostbyname($host);
-    
+    if ($ip === $host || empty($ip)) {
+        return false;
+    }
+
     $forbiddenPatterns = [
         '/^(10\.)/',
         '/^172\.(1[6-9]|2[0-9]|3[01])\./',
@@ -640,25 +659,22 @@ function fetchRemoteImage($url) {
         '/^0\./',
         '/^224\./',
         '/^240\./',
-        '/^(::1|fe80:|fc00:|fd00:)/i',
+        '/^255\.255\.255\.255$/',
+        '/^(fe80|fc00|fd00|::1|fe80::)/i',
+        '/^\[/', // IPv6 raw
     ];
-    
+
     foreach ($forbiddenPatterns as $pattern) {
         if (preg_match($pattern, $ip)) {
             return false;
         }
     }
-    
-    $resolvedIp = gethostbyname($host);
-    if ($resolvedIp === $host) {
+
+    $port = $parsed['port'] ?? null;
+    if ($port !== null && !in_array((int)$port, [80, 443, 8080, 8443])) {
         return false;
     }
-    foreach ($forbiddenPatterns as $pattern) {
-        if (preg_match($pattern, $resolvedIp)) {
-            return false;
-        }
-    }
-    
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -669,47 +685,93 @@ function fetchRemoteImage($url) {
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; ImageFetcher/1.0)');
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    
-    $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'];
-    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($curl, $header) use (&$contentType) {
+
+    // 强制使用已验证的IP，防止DNS重绑定攻击
+    $resolvePort = ($port !== null) ? (int)$port : ($scheme === 'https' ? 443 : 80);
+    curl_setopt($ch, CURLOPT_RESOLVE, [$host . ':' . $resolvePort . ':' . $ip]);
+
+    // 限制下载大小（5MB）
+    $maxSize = 5 * 1024 * 1024;
+    $data = '';
+    $totalSize = 0;
+    curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$data, $maxSize, &$totalSize) {
+        $chunkLen = strlen($chunk);
+        $totalSize += $chunkLen;
+        if ($totalSize > $maxSize) {
+            return 0; // 返回0中止传输
+        }
+        $data .= $chunk;
+        return $chunkLen;
+    });
+
+    // Content-Type 验证
+    $allowedTypes = [
+        'image/jpeg' => true, 'image/jpg' => true,
+        'image/png' => true, 'image/gif' => true,
+        'image/webp' => true, 'image/bmp' => true,
+        'image/svg+xml' => true, 'image/x-icon' => true,
+    ];
+    $contentTypeOk = true;
+    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($ch, $header) use (&$contentTypeOk, $allowedTypes) {
         $len = strlen($header);
         $header = trim($header);
-        if (strpos(strtolower($header), 'content-type:') === 0) {
-            $contentType = trim(substr($header, 13));
+        if (stripos($header, 'Content-Type:') === 0) {
+            $type = trim(substr($header, 13));
+            $type = strtolower(explode(';', $type)[0]);
+            if (!isset($allowedTypes[$type])) {
+                $contentTypeOk = false;
+            }
         }
         return $len;
     });
-    
-    $data = curl_exec($ch);
+
+    $success = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_error($ch);
     curl_close($ch);
-    
-    if ($data === false || !empty($error)) {
+
+    if ($success === false || !empty($error) || $httpCode !== 200) {
         return false;
     }
-    
-    if ($httpCode !== 200) {
+
+    if (!$contentTypeOk) {
         return false;
     }
-    
-    if (isset($contentType)) {
-        $mimeType = trim(explode(';', $contentType)[0]);
-        if (!in_array(strtolower($mimeType), $allowedTypes)) {
+
+    // 内容验证：检测文件签名（魔数）
+    $allowedSignatures = [
+        'ffd8ff' => 'jpg', // JPEG
+        '89504e47' => 'png', // PNG
+        '47494638' => 'gif', // GIF
+        '52494646' => 'webp_check', // WEBP (starts with RIFF, need more check)
+        '424d' => 'bmp', // BMP
+    ];
+    if (strlen($data) >= 4) {
+        $signature = bin2hex(substr($data, 0, 4));
+        $first2 = substr($signature, 0, 4);
+        $isValidImage = false;
+        foreach ($allowedSignatures as $sig => $type) {
+            if (strpos($signature, $sig) === 0 || strpos($first2, $sig) === 0) {
+                $isValidImage = true;
+                break;
+            }
+        }
+        if (!$isValidImage && strlen($data) >= 200) {
+            // 备用：使用 finfo 检测
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $detectedMime = $finfo->buffer($data);
+            if (!isset($allowedTypes[$detectedMime])) {
+                return false;
+            }
+        } elseif (!$isValidImage) {
             return false;
         }
     }
-    
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $detectedMime = $finfo->buffer($data);
-    if (!in_array($detectedMime, $allowedTypes)) {
+
+    if (strlen($data) < 100) {
         return false;
     }
-    
-    if (strlen($data) < 100 || strlen($data) > 50 * 1024 * 1024) {
-        return false;
-    }
-    
+
     return $data;
 }
 
@@ -726,25 +788,25 @@ function handleImageApiRequest($type, $countType = null) {
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
-    
+
     $validReturnTypes = ['redirect', 'json', 'img'];
     $returnType = isset($_GET['return']) ? $_GET['return'] : 'redirect';
     if (!in_array($returnType, $validReturnTypes)) {
         $returnType = 'redirect';
     }
-    
+
     $cacheTime = isset($_GET['cache']) ? max(0, intval($_GET['cache'])) : 0;
     $imageUrl = getRandomImageUrl($type);
-    
+
     if ($countType === null) {
         $countType = $type;
     }
     updateCallCount($countType, $returnType);
-    
+
     if (!$imageUrl) {
-        $errorMsg = ($type === 'pc') ? '没有找到可用的PC端图片' : 
+        $errorMsg = ($type === 'pc') ? '没有找到可用的PC端图片' :
                     (($type === 'pe') ? '没有找到可用的移动端图片' : '没有找到可用的图片');
-        
+
         if ($returnType === 'json') {
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode([
@@ -759,43 +821,38 @@ function handleImageApiRequest($type, $countType = null) {
         }
         exit;
     }
-    
+
     header("Cache-Control: public, max-age=$cacheTime");
     header("Expires: " . gmdate('D, d M Y H:i:s', time() + $cacheTime) . ' GMT');
-    
+
+    // 无缓存模式时添加随机参数避免CDN缓存
     if ($cacheTime == 0) {
-        $randomParam = 'rand=' . bin2hex(random_bytes(8));
+        try {
+            $randomParam = 'rand=' . bin2hex(random_bytes(8));
+        } catch (Exception $e) {
+            $randomParam = 'rand=' . substr(md5(uniqid((string)mt_rand(), true)), 0, 16);
+        }
         $imageUrl .= (strpos($imageUrl, '?') === false ? '?' : '&') . $randomParam;
     }
-    
+
     if ($returnType === 'json') {
-        $imageData = fetchRemoteImage($imageUrl);
-        $width = 0;
-        $height = 0;
-        
-        if ($imageData) {
-            $imageInfo = @getimagesizefromstring($imageData);
-            if ($imageInfo) {
-                $width = $imageInfo[0];
-                $height = $imageInfo[1];
-            }
-        }
-        
+        // JSON模式：不下载图片，直接返回URL信息，避免服务器带宽占用
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode([
             'success' => true,
             'url' => $imageUrl,
-            'width' => $width,
-            'height' => $height,
             'type' => $type,
             'timestamp' => time()
         ], JSON_UNESCAPED_UNICODE);
     } elseif ($returnType === 'img') {
+        // IMG模式：下载图片并代理返回（仍有SSRF保护）
         $imageData = fetchRemoteImage($imageUrl);
         if ($imageData) {
             $imageInfo = @getimagesizefromstring($imageData);
-            if ($imageInfo) {
+            if ($imageInfo && !empty($imageInfo['mime'])) {
                 header("Content-Type: {$imageInfo['mime']}");
+            } else {
+                header('Content-Type: application/octet-stream');
             }
             echo $imageData;
         } else {
@@ -803,6 +860,7 @@ function handleImageApiRequest($type, $countType = null) {
             echo '无法获取图片';
         }
     } else {
+        // 默认：重定向
         header("Location: $imageUrl");
     }
     exit;
@@ -811,13 +869,23 @@ function handleImageApiRequest($type, $countType = null) {
 // 判断设备类型
 function isMobileDevice() {
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+    if (empty($userAgent)) {
+        return false;
+    }
+
     $mobileAgents = [
-        'android', 'webos', 'iphone', 'ipad', 'ipod', 'blackberry', 
-        'iemobile', 'opera mini', 'mobile', 'windows phone'
+        'android', 'webos', 'iphone', 'ipad', 'ipod', 'blackberry',
+        'iemobile', 'opera mini', 'mobile', 'windows phone',
+        'kindle', 'silk/', 'symbian', 'maemo', 'samsung', 'htc',
+        'nokia', 'sony', 'lg-', 'lg /', 'lge ', 'bada', 'meego',
+        'j2me', 'midp', 'wap', 'phone', 'pocket', 'pda',
     ];
-    
+
+    $lowerAgent = strtolower($userAgent);
+
     foreach ($mobileAgents as $agent) {
-        if (stripos($userAgent, $agent) !== false) {
+        if (strpos($lowerAgent, $agent) !== false) {
             return true;
         }
     }

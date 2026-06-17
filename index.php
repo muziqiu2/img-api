@@ -1,4 +1,10 @@
-<?php require_once 'config.php'; ?>
+<?php
+require_once 'config.php';
+
+// 安全主机名（去除危险字符，防止Host头注入攻击）
+$safeHost = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^a-zA-Z0-9\.\-:]/', '', $_SERVER['HTTP_HOST']) : 'example.com';
+$safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
+?>
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -304,9 +310,9 @@
                     <h5>基础接口</h5>
                     <div class="api-link-container">
                         <div class="api-link">
-                            <code>https://<?php echo $_SERVER['HTTP_HOST']; ?>/api.php</code>
+                            <code>https://<?php echo $safeHost; ?>/api.php</code>
                         </div>
-                        <button class="copy-btn" data-clipboard-text="https://<?php echo $_SERVER['HTTP_HOST']; ?>/api.php">
+                        <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/api.php">
                             <i class="fas fa-copy"></i> 复制
                         </button>
                     </div>
@@ -316,9 +322,9 @@
                     <h5>PC端接口</h5>
                     <div class="api-link-container">
                         <div class="api-link">
-                            <code>https://<?php echo $_SERVER['HTTP_HOST']; ?>/pc.php</code>
+                            <code>https://<?php echo $safeHost; ?>/pc.php</code>
                         </div>
-                        <button class="copy-btn" data-clipboard-text="https://<?php echo $_SERVER['HTTP_HOST']; ?>/pc.php">
+                        <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/pc.php">
                             <i class="fas fa-copy"></i> 复制
                         </button>
                     </div>
@@ -328,9 +334,9 @@
                     <h5>移动端接口</h5>
                     <div class="api-link-container">
                         <div class="api-link">
-                            <code>https://<?php echo $_SERVER['HTTP_HOST']; ?>/pe.php</code>
+                            <code>https://<?php echo $safeHost; ?>/pe.php</code>
                         </div>
-                        <button class="copy-btn" data-clipboard-text="https://<?php echo $_SERVER['HTTP_HOST']; ?>/pe.php">
+                        <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/pe.php">
                             <i class="fas fa-copy"></i> 复制
                         </button>
                     </div>
@@ -376,9 +382,9 @@
                             <div class="accordion-body">
                                 <div class="api-link-container mb-2">
                                     <div class="api-link">
-                                        <code>https://<?php echo $_SERVER['HTTP_HOST']; ?>/pc.php</code>
+                                        <code>https://<?php echo $safeHost; ?>/pc.php</code>
                                     </div>
-                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $_SERVER['HTTP_HOST']; ?>/pc.php">
+                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/pc.php">
                                         <i class="fas fa-copy"></i> 复制
                                     </button>
                                 </div>
@@ -403,17 +409,15 @@
                             <div class="accordion-body">
                                 <div class="api-link-container mb-2">
                                     <div class="api-link">
-                                        <code>https://<?php echo $_SERVER['HTTP_HOST']; ?>/pe.php?return=json</code>
+                                        <code>https://<?php echo $safeHost; ?>/pe.php?return=json</code>
                                     </div>
-                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $_SERVER['HTTP_HOST']; ?>/pe.php?return=json">
+                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/pe.php?return=json">
                                         <i class="fas fa-copy"></i> 复制
                                     </button>
                                 </div>
                                 <pre class="bg-light p-3 rounded mt-2"><code>{
   "success": true,
   "url": "https://example.com/image.jpg",
-  "width": 1080,
-  "height": 1920,
   "type": "pe",
   "timestamp": 1622505600
 }</code></pre>
@@ -430,9 +434,9 @@
                             <div class="accordion-body">
                                 <div class="api-link-container mb-2">
                                     <div class="api-link">
-                                        <code>&lt;img src="https://<?php echo $_SERVER['HTTP_HOST']; ?>/api.php" alt="随机图片"&gt;</code>
+                                        <code>&lt;img src="https://<?php echo $safeHost; ?>/api.php" alt="随机图片"&gt;</code>
                                     </div>
-                                    <button class="copy-btn" data-clipboard-text="&lt;img src=&quot;https://<?php echo $_SERVER['HTTP_HOST']; ?>/api.php&quot; alt=&quot;随机图片&quot;&gt;">
+                                    <button class="copy-btn" data-clipboard-text="&lt;img src=&quot;https://<?php echo $safeHost; ?>/api.php&quot; alt=&quot;随机图片&quot;&gt;">
                                         <i class="fas fa-copy"></i> 复制
                                     </button>
                                 </div>
@@ -449,9 +453,9 @@
                             <div class="accordion-body">
                                 <div class="api-link-container mb-2">
                                     <div class="api-link">
-                                        <code>https://<?php echo $_SERVER['HTTP_HOST']; ?>/pc.php?cache=3600</code>
+                                        <code>https://<?php echo $safeHost; ?>/pc.php?cache=3600</code>
                                     </div>
-                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $_SERVER['HTTP_HOST']; ?>/pc.php?cache=3600">
+                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/pc.php?cache=3600">
                                         <i class="fas fa-copy"></i> 复制
                                     </button>
                                 </div>

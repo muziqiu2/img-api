@@ -5,38 +5,57 @@
  */
 
 // 静态文件扩展名
-$staticExtensions = ['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'otf', 'map'];
+$staticExtensions = [
+    'css' => 'text/css',
+    'js' => 'application/javascript',
+    'png' => 'image/png',
+    'jpg' => 'image/jpeg',
+    'jpeg' => 'image/jpeg',
+    'gif' => 'image/gif',
+    'ico' => 'image/x-icon',
+    'svg' => 'image/svg+xml',
+    'woff' => 'font/woff',
+    'woff2' => 'font/woff2',
+    'ttf' => 'font/ttf',
+    'otf' => 'font/otf',
+    'eot' => 'application/vnd.ms-fontobject',
+    'map' => 'application/json',
+];
 
 // 获取请求 URI
-$requestUri = $_SERVER['REQUEST_URI'];
+$requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($requestUri, PHP_URL_PATH);
+$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
-// 静态文件请求
-$ext = pathinfo($path, PATHINFO_EXTENSION);
-if (in_array($ext, $staticExtensions) && file_exists(__DIR__ . '/public' . $path)) {
-    // 提供静态文件
-    $file = __DIR__ . '/public' . $path;
-    $mimeTypes = [
-        'css' => 'text/css',
-        'js' => 'application/javascript',
-        'png' => 'image/png',
-        'jpg' => 'image/jpeg',
-        'jpeg' => 'image/jpeg',
-        'gif' => 'image/gif',
-        'ico' => 'image/x-icon',
-        'svg' => 'image/svg+xml',
-        'woff' => 'font/woff',
-        'woff2' => 'font/woff2',
-        'ttf' => 'font/ttf',
-        'otf' => 'font/otf',
-        'eot' => 'application/vnd.ms-fontobject',
-        'map' => 'application/json',
+if (!empty($ext) && isset($staticExtensions[$ext])) {
+    // 尝试两种路径：带 public 前缀的和不带的
+    $candidates = [
+        __DIR__ . $path,                 // /public/js/jquery.min.js -> workdir/public/js/jquery.min.js
+        __DIR__ . '/public' . $path,     // /js/jquery.min.js -> workdir/public/js/jquery.min.js
     ];
-    $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
-    header('Content-Type: ' . $mime);
-    readfile($file);
+
+    // 如果 URL 以 /public/ 开头，也尝试去掉前缀
+    if (strpos($path, '/public/') === 0) {
+        $candidates[] = __DIR__ . $path;
+        $candidates[] = __DIR__ . substr($path, 7);
+    }
+
+    foreach ($candidates as $file) {
+        if (is_file($file)) {
+            header('Content-Type: ' . $staticExtensions[$ext]);
+            $fileSize = filesize($file);
+            if ($fileSize !== false) {
+                header('Content-Length: ' . $fileSize);
+            }
+            readfile($file);
+            return true;
+        }
+    }
+
+    http_response_code(404);
+    echo 'Not Found';
     return true;
 }
 
-// 其他请求交给 PHP 处理
+// 其他请求交给 PHP 脚本处理
 return false;
