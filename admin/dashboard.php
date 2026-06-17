@@ -956,6 +956,7 @@ $(document).ready(function() {
         loadBackupList();
         loadUpdateHistory();
     }
+});
 </script>
 </body>
 </html>
