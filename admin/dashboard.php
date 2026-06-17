@@ -473,7 +473,7 @@ $currentUsername = getCurrentUsername();
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">确认删除</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <button type="button" class="close" id="confirmModalClose" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
@@ -481,7 +481,7 @@ $currentUsername = getCurrentUsername();
                 <p id="confirmMessage">确定要删除这个图片链接吗？</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-default" data-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-secondary" id="confirmModalCancel">取消</button>
                 <button type="button" class="btn btn-danger" id="confirmModalYes">确定删除</button>
             </div>
         </div>
@@ -582,16 +582,16 @@ function executeDelete() {
 }
 
 $(document).ready(function() {
-    $('#confirmModal').on('show.bs.modal', function() {
-        if (selectedUrls.length > 0 && !pendingDeleteUrl) {
-            pendingDeleteUrl = 'MULTI_DELETE';
-            pendingDeleteType = '<?php echo $currentType; ?>';
-            pendingDeleteToken = '<?php echo $csrfToken; ?>';
-        }
-    });
-    
     $('#confirmModalYes').on('click', function() {
         executeDelete();
+    });
+
+    $('#confirmModalCancel').on('click', function() {
+        $('#confirmModal').modal('hide');
+    });
+
+    $('#confirmModalClose').on('click', function() {
+        $('#confirmModal').modal('hide');
     });
 
     $('#confirmModal').on('hidden.bs.modal', function() {
