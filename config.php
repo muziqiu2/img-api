@@ -132,12 +132,25 @@ $isAdminArea = strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false;
 
 // 仅在管理区域启动会话
 if ($isAdminArea) {
+    // 设置 session 配置
     ini_set('session.cookie_httponly', 1);
     ini_set('session.cookie_samesite', 'Lax');
-    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
-        ini_set('session.cookie_secure', 1);
+    ini_set('session.use_strict_mode', 0);
+    
+    // 设置 session cookie 路径为根路径，确保全站共享
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
+    
+    // 启动 session
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
     }
-    session_start();
     
     // 登录状态检查
     $isLoggedIn = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
@@ -564,16 +577,10 @@ function logAdminAction($action) {
     $db = getDb();
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $time = date('Y-m-d H:i:s');
-    // 优先使用 session 中的用户名，如果不存在则从数据库读取
-    $username = $_SESSION['admin_username'] ?? getCurrentUsername();
-
+    $username = getCurrentUsername();
+    
     $stmt = $db->prepare("INSERT INTO admin_logs (time, username, ip, action) VALUES (?, ?, ?, ?)");
     return $stmt->execute([$time, $username, $ip, $action]);
-}
-
-// 检查是否为默认密码
-function isDefaultPassword() {
-    return verifyPassword('123456');
 }
 
 function getAdminLogs($limit = 100) {
