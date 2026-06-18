@@ -149,6 +149,14 @@ function initDatabase() {
         )
     ");
 
+    // 应用设置表（存储 GitHub Token 等配置）
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ");
+
     // 图片URL表
     $db->exec("
         CREATE TABLE IF NOT EXISTS image_urls (
@@ -361,6 +369,37 @@ function isAccountLocked() {
 function getRemainingAttempts() {
     $config = getUserConfig();
     return max(0, 5 - ($config['login_attempts'] ?? 0));
+}
+
+// ==================== 应用设置函数 ====================
+
+function getAppSetting($key, $default = '') {
+    $db = getDb();
+    $stmt = $db->prepare("SELECT value FROM app_settings WHERE key = ?");
+    $stmt->execute([$key]);
+    $result = $stmt->fetch();
+    return $result ? ($result['value'] ?? $default) : $default;
+}
+
+function setAppSetting($key, $value) {
+    $db = getDb();
+    $stmt = $db->prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)");
+    return $stmt->execute([$key, $value]);
+}
+
+function deleteAppSetting($key) {
+    $db = getDb();
+    $stmt = $db->prepare("DELETE FROM app_settings WHERE key = ?");
+    return $stmt->execute([$key]);
+}
+
+// 获取 GitHub Token（优先从数据库获取，否则使用配置文件）
+function getGithubToken() {
+    $token = getAppSetting('github_token', '');
+    if (empty($token)) {
+        $token = defined('GITHUB_TOKEN') ? GITHUB_TOKEN : '';
+    }
+    return $token;
 }
 
 // ==================== CSRF 防护函数 ====================

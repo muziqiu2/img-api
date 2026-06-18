@@ -7,8 +7,11 @@
  *   update   —— 执行完整更新（耗时较长）
  *   rollback —— 从指定备份回滚
  *   backups  —— 获取备份列表
+ *   delete_backup —— 删除指定备份文件
  *   logs     —— 获取更新历史日志
  *   env      —— 检查当前环境是否满足更新要求
+ *   settings —— 获取应用设置
+ *   save_token —— 保存 GitHub Token
  */
 
 require_once dirname(__DIR__) . '/config.php';
@@ -32,9 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken($csrfToken)) {
 }
 
 // 频率限制
-// 对于只读操作（check、backups、logs、env），使用更宽松的限制（30次/分钟）
-// 对于写操作（update、rollback），使用严格的限制（10次/分钟）
-$readonlyActions = ['check', 'backups', 'logs', 'env'];
+// 对于只读操作（check、backups、logs、env、settings），使用更宽松的限制（30次/分钟）
+// 对于写操作（update、rollback、save_token、delete_backup），使用严格的限制（10次/分钟）
+$readonlyActions = ['check', 'backups', 'logs', 'env', 'settings'];
 $isReadOnly = in_array($action, $readonlyActions);
 
 if ($isReadOnly) {
@@ -178,6 +181,38 @@ try {
             break;
 
         // ============================================
+        // 4.5) 删除指定备份文件
+        // ============================================
+        case 'delete_backup':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => '仅允许 POST 请求'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $backupFile = isset($_POST['backup']) ? basename($_POST['backup']) : '';
+            if (empty($backupFile) || substr($backupFile, -4) !== '.zip') {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => '无效的备份文件'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $fullPath = UPDATE_BACKUP_DIR . '/' . $backupFile;
+            if (!file_exists($fullPath)) {
+                http_response_code(404);
+                echo json_encode(['success' => false, 'error' => '备份文件不存在'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            if (@unlink($fullPath)) {
+                logAdminAction('删除了备份文件: ' . $backupFile);
+                echo json_encode(['success' => true, 'message' => '备份文件已删除'], JSON_UNESCAPED_UNICODE);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => '删除失败，请检查文件权限'], JSON_UNESCAPED_UNICODE);
+            }
+            break;
+
+        // ============================================
         // 5) 获取更新历史日志
         // ============================================
         case 'logs':
@@ -190,6 +225,45 @@ try {
         // ============================================
         case 'env':
             echo json_encode(checkUpdateEnvironment(), JSON_UNESCAPED_UNICODE);
+            break;
+
+        // ============================================
+        // 7) 获取应用设置
+        // ============================================
+        case 'settings':
+            $githubToken = getGithubToken();
+            echo json_encode([
+                'success' => true,
+                'github_token' => !empty($githubToken) ? '***' . substr($githubToken, -4) : '', // 只显示后4位
+                'has_token' => !empty($githubToken),
+            ], JSON_UNESCAPED_UNICODE);
+            break;
+
+        // ============================================
+        // 8) 保存 GitHub Token
+        // ============================================
+        case 'save_token':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => '仅允许 POST 请求'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $token = isset($_POST['token']) ? trim($_POST['token']) : '';
+            // 验证 token 格式（可选，简单验证不是空字符串）
+            if (strlen($token) > 0 && strlen($token) < 10) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'error' => 'Token 格式不正确'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            if (setAppSetting('github_token', $token)) {
+                logAdminAction(empty($token) ? '清空了 GitHub Token' : '更新了 GitHub Token');
+                echo json_encode(['success' => true, 'message' => empty($token) ? 'Token 已清空' : 'Token 已保存'], JSON_UNESCAPED_UNICODE);
+            } else {
+                http_response_code(500);
+                echo json_encode(['success' => false, 'error' => '保存失败'], JSON_UNESCAPED_UNICODE);
+            }
             break;
 
         // ============================================
