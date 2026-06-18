@@ -700,7 +700,7 @@ function executeDelete() {
 }
 
 // ============================================
-// 系统更新相关 JavaScript
+// 系统更新相关 JavaScript（全局函数定义）
 // ============================================
 var updateCsrfToken = '<?php echo $csrfToken; ?>';
 var currentVersion = '<?php echo htmlspecialchars(APP_VERSION); ?>';
@@ -973,6 +973,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// ============================================
+// jQuery 模态框事件绑定
+// ============================================
 $(document).ready(function() {
     $('#confirmModalYes').on('click', function() {
         executeDelete();
@@ -1005,7 +1008,6 @@ $(document).ready(function() {
         }
     });
 });
-
 </script>
 </body>
 </html>
