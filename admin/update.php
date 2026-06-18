@@ -32,10 +32,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken($csrfToken)) {
 }
 
 // 频率限制
-if (!checkAdminRateLimit()) {
-    http_response_code(429);
-    echo json_encode(['success' => false, 'error' => '请求过于频繁，请稍后再试'], JSON_UNESCAPED_UNICODE);
-    exit;
+// 对于只读操作（check、backups、logs、env），使用更宽松的限制（30次/分钟）
+// 对于写操作（update、rollback），使用严格的限制（10次/分钟）
+$readonlyActions = ['check', 'backups', 'logs', 'env'];
+$isReadOnly = in_array($action, $readonlyActions);
+
+if ($isReadOnly) {
+    // 宽松限制：30次/分钟
+    if (!checkAdminRateLimitGeneric(30)) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'error' => '请求过于频繁，请稍后再试'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+} else {
+    // 严格限制：10次/分钟
+    if (!checkAdminRateLimit()) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'error' => '请求过于频繁，请稍后再试'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 }
 
 $action = isset($_GET['action']) ? $_GET['action'] : ($_POST['action'] ?? '');
