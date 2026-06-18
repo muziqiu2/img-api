@@ -557,6 +557,38 @@ $currentUsername = getCurrentUsername();
                     </div>
                 </div>
 
+                <!-- GitHub Token 设置 -->
+                <div class="card mt-3" id="tokenSettingsCard">
+                    <div class="card-header">
+                        <h3 class="card-title">GitHub Token 设置</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small">
+                            填写 GitHub Personal Access Token 可大幅提升 API 请求限制（从 60次/小时 提升至 5000次/小时）。<br>
+                            不填写也可以正常使用，但可能遇到频率限制。如需 Token，请前往 GitHub Settings → Developer settings → Personal access tokens 生成。
+                        </p>
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="input-group">
+                                    <input type="password" class="form-control" id="githubTokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxx">
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-secondary" id="toggleTokenBtn" onclick="toggleTokenVisibility()">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-primary" id="saveTokenBtn" onclick="saveGithubToken()">
+                                            <i class="fas fa-save"></i> 保存
+                                        </button>
+                                        <button type="button" class="btn btn-outline-danger" id="clearTokenBtn" onclick="clearGithubToken()" style="display:none;">
+                                            <i class="fas fa-trash"></i> 清空
+                                        </button>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted" id="tokenStatus"></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 备份管理 -->
                 <div class="card mt-3">
                     <div class="card-header">
@@ -895,12 +927,15 @@ function loadBackupList() {
             var html = '<table class="table table-striped"><thead><tr><th>文件名</th><th>大小 (KB)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
             data.backups.forEach(function(b) {
                 html += '<tr>';
-                html += '<td>' + b.filename + '</td>';
-                html += '<td>' + b.size + '</td>';
+                html += '<td><code>' + b.filename + '</code></td>';
+                html += '<td>' + b.size + ' KB</td>';
                 html += '<td>' + b.time + '</td>';
-                html += '<td><button type="button" class="btn btn-sm btn-warning" onclick="doRollback(\'' + b.filename + '\')">';
-                html += '<i class="fas fa-undo"></i> 从此备份恢复</button></td>';
-                html += '</tr>';
+                html += '<td>';
+                html += '<button type="button" class="btn btn-sm btn-warning mr-1" onclick="doRollback(\'' + b.filename + '\')">';
+                html += '<i class="fas fa-undo"></i> 恢复</button>';
+                html += '<button type="button" class="btn btn-sm btn-danger" onclick="deleteBackup(\'' + b.filename + '\')">';
+                html += '<i class="fas fa-trash"></i> 删除</button>';
+                html += '</td></tr>';
             });
             html += '</tbody></table>';
             box.innerHTML = html;
@@ -964,12 +999,122 @@ function doRollback(filename) {
         });
 }
 
+// 删除备份文件
+function deleteBackup(filename) {
+    if (!confirm('确定要删除备份文件 "' + filename + '" 吗？此操作不可撤销。')) {
+        return;
+    }
+    var formData = new FormData();
+    formData.append('action', 'delete_backup');
+    formData.append('backup', filename);
+    formData.append('csrf_token', updateCsrfToken);
+
+    fetch('update.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert('备份文件已删除');
+            loadBackupList();
+        } else {
+            alert('删除失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(function(err) {
+        alert('请求失败: ' + err);
+    });
+}
+
+// 加载 GitHub Token 状态
+function loadGithubToken() {
+    fetch('update.php?action=settings', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var tokenInput = document.getElementById('githubTokenInput');
+            var tokenStatus = document.getElementById('tokenStatus');
+            var clearBtn = document.getElementById('clearTokenBtn');
+            if (data.success) {
+                if (data.has_token) {
+                    tokenStatus.textContent = '当前已设置 Token: ' + data.github_token;
+                    tokenStatus.className = 'form-text text-success';
+                    clearBtn.style.display = 'inline-block';
+                } else {
+                    tokenStatus.textContent = '未设置 Token';
+                    tokenStatus.className = 'form-text text-muted';
+                    clearBtn.style.display = 'none';
+                }
+            }
+        })
+        .catch(function() {});
+}
+
+// 保存 GitHub Token
+function saveGithubToken() {
+    var token = document.getElementById('githubTokenInput').value.trim();
+    var formData = new FormData();
+    formData.append('action', 'save_token');
+    formData.append('token', token);
+    formData.append('csrf_token', updateCsrfToken);
+
+    document.getElementById('saveTokenBtn').disabled = true;
+    document.getElementById('saveTokenBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...';
+
+    fetch('update.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+            document.getElementById('githubTokenInput').value = '';
+            loadGithubToken();
+            // 清除前端缓存，下次检查会获取最新版本信息
+            try { localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY); } catch (e) {}
+        } else {
+            alert('保存失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(function(err) {
+        alert('请求失败: ' + err);
+    })
+    .finally(function() {
+        document.getElementById('saveTokenBtn').disabled = false;
+        document.getElementById('saveTokenBtn').innerHTML = '<i class="fas fa-save"></i> 保存';
+    });
+}
+
+// 清空 GitHub Token
+function clearGithubToken() {
+    if (!confirm('确定要清空 GitHub Token 吗？清空后将使用匿名方式访问 GitHub API。')) {
+        return;
+    }
+    document.getElementById('githubTokenInput').value = '';
+    saveGithubToken();
+}
+
+// 切换 Token 显示/隐藏
+function toggleTokenVisibility() {
+    var input = document.getElementById('githubTokenInput');
+    var btn = document.getElementById('toggleTokenBtn');
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+    } else {
+        input.type = 'password';
+        btn.innerHTML = '<i class="fas fa-eye"></i>';
+    }
+}
+
 // 自动加载：进入更新页面后立即检查版本
 document.addEventListener('DOMContentLoaded', function() {
     if ('<?php echo $currentSection; ?>' === 'update') {
         checkUpdate(false);
         loadBackupList();
         loadUpdateHistory();
+        loadGithubToken();
     }
 });
 

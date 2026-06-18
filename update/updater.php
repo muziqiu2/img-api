@@ -257,8 +257,8 @@ class AppUpdater
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 
-            if (!empty(GITHUB_TOKEN)) {
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: token ' . GITHUB_TOKEN]);
+            if (!empty(getGithubToken())) {
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: token ' . getGithubToken()]);
             }
 
             $success = curl_exec($ch);
@@ -278,7 +278,7 @@ class AppUpdater
                 'http' => [
                     'timeout' => 300,
                     'user_agent' => 'AppUpdater/1.0',
-                    'header' => !empty(GITHUB_TOKEN) ? "Authorization: token " . GITHUB_TOKEN . "\r\n" : '',
+                    'header' => !empty(getGithubToken()) ? "Authorization: token " . getGithubToken() . "\r\n" : '',
                 ],
                 'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
             ]);
@@ -808,8 +808,8 @@ class AppUpdater
             curl_setopt($ch, CURLOPT_USERAGENT, 'AppUpdater/1.0');
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-            if (!empty(GITHUB_TOKEN)) {
-                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: token ' . GITHUB_TOKEN]);
+            if (!empty(getGithubToken())) {
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: token ' . getGithubToken()]);
             }
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

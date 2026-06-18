@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.0.7'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.0'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -146,6 +146,14 @@ function initDatabase() {
             login_attempts INTEGER DEFAULT 0,
             last_attempt INTEGER DEFAULT 0,
             locked_until INTEGER DEFAULT 0
+        )
+    ");
+
+    // 应用设置表（存储 GitHub Token 等配置）
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
         )
     ");
 
@@ -363,6 +371,37 @@ function getRemainingAttempts() {
     return max(0, 5 - ($config['login_attempts'] ?? 0));
 }
 
+// ==================== 应用设置函数 ====================
+
+function getAppSetting($key, $default = '') {
+    $db = getDb();
+    $stmt = $db->prepare("SELECT value FROM app_settings WHERE key = ?");
+    $stmt->execute([$key]);
+    $result = $stmt->fetch();
+    return $result ? ($result['value'] ?? $default) : $default;
+}
+
+function setAppSetting($key, $value) {
+    $db = getDb();
+    $stmt = $db->prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)");
+    return $stmt->execute([$key, $value]);
+}
+
+function deleteAppSetting($key) {
+    $db = getDb();
+    $stmt = $db->prepare("DELETE FROM app_settings WHERE key = ?");
+    return $stmt->execute([$key]);
+}
+
+// 获取 GitHub Token（优先从数据库获取，否则使用配置文件）
+function getGithubToken() {
+    $token = getAppSetting('github_token', '');
+    if (empty($token)) {
+        $token = defined('GITHUB_TOKEN') ? GITHUB_TOKEN : '';
+    }
+    return $token;
+}
+
 // ==================== CSRF 防护函数 ====================
 
 function generateCsrfToken() {
@@ -471,6 +510,51 @@ function checkAdminRateLimit() {
     $record = $stmt->fetch();
 
     return !$record || $record['count'] <= RATE_LIMIT_MAX_ADMIN;
+}
+
+// 通用管理后台频率限制函数（可自定义最大请求数）
+function checkAdminRateLimitGeneric($maxRequests = 30, $windowSeconds = 60) {
+    if (!IS_LOGGED_IN) {
+        return true;
+    }
+
+    $username = md5($_SESSION['admin_username'] ?? 'unknown');
+    $key = 'admin_generic_' . $username . '_' . $maxRequests;
+    $now = time();
+    $windowStart = $now - $windowSeconds;
+
+    $db = getDb();
+
+    // 清理过期记录
+    $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
+    $stmt->execute([$windowStart]);
+
+    // 先检查当前计数是否已超过限制
+    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
+    $stmt->execute([$key]);
+    $record = $stmt->fetch();
+
+    // 如果已超过限制，直接拒绝
+    if ($record && $record['count'] >= $maxRequests) {
+        return false;
+    }
+
+    // 尝试原子地增加计数
+    $stmt = $db->prepare("
+        INSERT INTO rate_limits (id, count, timestamp)
+        VALUES (?, 1, ?)
+        ON CONFLICT(id) DO UPDATE
+        SET count = CASE WHEN timestamp < ? THEN 1 ELSE count + 1 END,
+            timestamp = CASE WHEN timestamp < ? THEN ? ELSE timestamp END
+    ");
+    $stmt->execute([$key, $now, $windowStart, $windowStart, $now]);
+
+    // 再次检查
+    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
+    $stmt->execute([$key]);
+    $record = $stmt->fetch();
+
+    return !$record || $record['count'] <= $maxRequests;
 }
 
 // ==================== 图片管理函数 ====================
