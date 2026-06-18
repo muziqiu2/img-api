@@ -699,6 +699,283 @@ function executeDelete() {
     $('#confirmModal').modal('hide');
 }
 
+// ============================================
+// 系统更新相关 JavaScript（全局函数定义）
+// ============================================
+var updateCsrfToken = '<?php echo $csrfToken; ?>';
+var currentVersion = '<?php echo htmlspecialchars(APP_VERSION); ?>';
+
+function setUpdateStatus(message, type) {
+    var box = document.getElementById('updateStatus');
+    if (!box) return;
+    var iconClass = 'fas fa-info-circle';
+    var alertClass = 'alert alert-info';
+    if (type === 'success') { alertClass = 'alert alert-success'; iconClass = 'fas fa-check-circle'; }
+    else if (type === 'error') { alertClass = 'alert alert-danger'; iconClass = 'fas fa-exclamation-triangle'; }
+    else if (type === 'warning') { alertClass = 'alert alert-warning'; iconClass = 'fas fa-exclamation-circle'; }
+    box.className = alertClass;
+    box.innerHTML = '<i class="icon ' + iconClass + '"></i> ' + message;
+}
+
+function appendUpdateLog(line) {
+    var logBox = document.getElementById('updateLog');
+    if (logBox) {
+        logBox.textContent += line + '\n';
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+}
+
+// 前端版本检查缓存配置（5 分钟内不重复请求，避免频繁调用 GitHub API）
+var UPDATE_CHECK_LOCAL_CACHE_TTL = 5 * 60 * 1000;
+var UPDATE_CHECK_LOCAL_CACHE_KEY = 'app_update_check_cache_v1';
+
+// 渲染版本检查结果到页面（被 checkUpdate 和本地缓存共用）
+function renderUpdateResult(data, fromCache, cacheTime) {
+    var latestText = document.getElementById('latestVersionText');
+    if (!data.success) {
+        latestText.textContent = '未知';
+        setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
+        return;
+    }
+    var latest = data.latest;
+    latestText.textContent = latest;
+
+    // 环境警告
+    if (data.env && !data.env.ok) {
+        var html = '<div class="alert alert-danger">';
+        html += '<i class="icon fas fa-exclamation-triangle"></i> 环境不满足更新要求:<ul class="mt-2">';
+        (data.env.errors || []).forEach(function (m) { html += '<li>' + m + '</li>'; });
+        html += '</ul></div>';
+        document.getElementById('envWarningBox').innerHTML = html;
+    } else if (data.env && data.env.warnings && data.env.warnings.length > 0) {
+        var whtml = '<div class="alert alert-warning">';
+        whtml += '<i class="icon fas fa-exclamation"></i> 警告:<ul class="mt-2">';
+        (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + m + '</li>'; });
+        whtml += '</ul></div>';
+        document.getElementById('envWarningBox').innerHTML = whtml;
+    }
+
+    if (data.has_update) {
+        var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
+        setUpdateStatus(
+            '发现新版本 <strong>' + latest + '</strong>（当前版本 ' + data.current + '）。建议立即更新。' + cacheHint,
+            'success'
+        );
+        document.getElementById('updateActionBox').style.display = 'block';
+        if (data.release) {
+            document.getElementById('releaseName').textContent = data.release.name || latest;
+            document.getElementById('releaseDate').textContent = data.release.published_at ? '  (' + data.release.published_at + ')' : '';
+            document.getElementById('releaseUrl').href = data.release.html_url || '#';
+            document.getElementById('releaseBody').textContent = data.release.body || '无发布说明';
+            document.getElementById('releaseInfoBox').style.display = 'block';
+        }
+    } else {
+        var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
+        setUpdateStatus('当前已是最新版本（' + data.current + '）' + cacheHint, 'info');
+        document.getElementById('latestVersionText').textContent = '已是最新';
+    }
+}
+
+function checkUpdate(force) {
+    var latestText = document.getElementById('latestVersionText');
+    if (latestText) latestText.textContent = '检查中...';
+    setUpdateStatus('正在检查 GitHub 最新版本...', 'info');
+    document.getElementById('updateActionBox').style.display = 'none';
+    document.getElementById('releaseInfoBox').style.display = 'none';
+    document.getElementById('envWarningBox').innerHTML = '';
+
+    // 非强制模式下优先使用前端 localStorage 缓存（5 分钟内避免频繁请求）
+    if (!force) {
+        try {
+            var rawCache = localStorage.getItem(UPDATE_CHECK_LOCAL_CACHE_KEY);
+            if (rawCache) {
+                var cached = JSON.parse(rawCache);
+                var age = Date.now() - (cached.timestamp || 0);
+                if (cached.data && cached.data.success && age < UPDATE_CHECK_LOCAL_CACHE_TTL) {
+                    var cacheTimeStr = new Date(cached.timestamp).toLocaleString();
+                    renderUpdateResult(cached.data, true, cacheTimeStr);
+                    return;
+                }
+                // 缓存过期，清理
+                localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY);
+            }
+        } catch (e) {
+            // localStorage 不可用，走正常请求
+        }
+    }
+
+    var url = 'update.php?action=check' + (force ? '&force=1' : '');
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.success) {
+                latestText.textContent = '未知';
+                setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
+                return;
+            }
+            // 写入前端缓存（仅保存成功的响应，避免缓存错误）
+            try {
+                localStorage.setItem(UPDATE_CHECK_LOCAL_CACHE_KEY, JSON.stringify({
+                    timestamp: Date.now(),
+                    data: data,
+                }));
+            } catch (e) {}
+            renderUpdateResult(data, false, null);
+        })
+        .catch(function(err) {
+            document.getElementById('latestVersionText').textContent = '失败';
+            setUpdateStatus('网络请求失败，请检查网络或稍后再试', 'error');
+        });
+}
+
+function doUpdate() {
+    if (!confirm('确定要执行自动更新吗？此操作将下载并覆盖项目文件。更新过程中请不要关闭页面。')) {
+        return;
+    }
+    var btn = document.getElementById('updateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+    document.getElementById('progressBar').style.display = 'block';
+    document.getElementById('updateLogBox').style.display = 'block';
+    document.getElementById('updateLog').textContent = '';
+    setUpdateStatus('正在执行更新，这可能需要几分钟时间...', 'info');
+    appendUpdateLog('[开始] 发起更新请求...');
+
+    var formData = new FormData();
+    formData.append('action', 'update');
+    formData.append('csrf_token', updateCsrfToken);
+
+    fetch('update.php?action=update', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.logs && Array.isArray(data.logs)) {
+            data.logs.forEach(function(line) { appendUpdateLog(line); });
+        }
+        if (data.success) {
+            // 更新成功，清理前端缓存，确保下次进入页面获取最新版本信息
+            try { localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY); } catch (e) {}
+            setUpdateStatus('更新成功！当前版本已升级到 ' + (data.to_version || '最新版本') + '。请刷新页面确认。', 'success');
+            appendUpdateLog('[完成] 更新成功！');
+            btn.innerHTML = '<i class="fas fa-check"></i> 更新成功';
+            btn.className = 'btn btn-lg btn-success';
+            // 3秒后自动刷新
+            setTimeout(function() { location.reload(); }, 3000);
+        } else {
+            var msg = data.error || (data.errors && data.errors.join('；')) || '更新失败';
+            setUpdateStatus('更新失败: ' + msg, 'error');
+            appendUpdateLog('[失败] ' + msg);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download"></i> 重试更新';
+            btn.className = 'btn btn-lg btn-success';
+        }
+        document.getElementById('progressBar').style.display = 'none';
+        loadBackupList();
+        loadUpdateHistory();
+    })
+    .catch(function(err) {
+        setUpdateStatus('更新请求失败，请检查服务器日志', 'error');
+        document.getElementById('progressBar').style.display = 'none';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download"></i> 重新尝试';
+    });
+}
+
+function loadBackupList() {
+    fetch('update.php?action=backups', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var box = document.getElementById('backupList');
+            if (!data.success || !data.backups || data.backups.length === 0) {
+                box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无备份文件</div>';
+                return;
+            }
+            var html = '<table class="table table-striped"><thead><tr><th>文件名</th><th>大小 (KB)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+            data.backups.forEach(function(b) {
+                html += '<tr>';
+                html += '<td>' + b.filename + '</td>';
+                html += '<td>' + b.size + '</td>';
+                html += '<td>' + b.time + '</td>';
+                html += '<td><button type="button" class="btn btn-sm btn-warning" onclick="doRollback(\'' + b.filename + '\')">';
+                html += '<i class="fas fa-undo"></i> 从此备份恢复</button></td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            box.innerHTML = html;
+        })
+        .catch(function() {
+            document.getElementById('backupList').innerHTML = '<div class="text-danger">加载失败</div>';
+        });
+}
+
+function loadUpdateHistory() {
+    fetch('update.php?action=logs', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var box = document.getElementById('updateHistoryList');
+            if (!data.success || !data.logs || data.logs.length === 0) {
+                box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
+                return;
+            }
+            var html = '<table class="table table-striped"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
+            data.logs.forEach(function(log) {
+                var statusClass = 'badge-info';
+                var statusText = log.status;
+                if (log.status === 'success') { statusClass = 'badge-success'; statusText = '成功'; }
+                else if (log.status === 'failed') { statusClass = 'badge-danger'; statusText = '失败'; }
+                else if (log.status === 'rollback') { statusClass = 'badge-warning'; statusText = '回滚'; }
+                html += '<tr>';
+                html += '<td>' + (log.timestamp || '-') + '</td>';
+                html += '<td>' + (log.from_version || '-') + '</td>';
+                html += '<td>' + (log.to_version || '-') + '</td>';
+                html += '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
+                html += '<td>' + (log.username || '-') + '</td>';
+                html += '<td>' + (log.message || '-') + '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            box.innerHTML = html;
+        })
+        .catch(function() {
+            document.getElementById('updateHistoryList').innerHTML = '<div class="text-danger">加载失败</div>';
+        });
+}
+
+function doRollback(filename) {
+    if (!confirm('确定要从备份文件恢复吗？这将覆盖当前所有文件。此操作不可撤销。')) return;
+    var formData = new FormData();
+    formData.append('action', 'rollback');
+    formData.append('backup', filename);
+    formData.append('csrf_token', updateCsrfToken);
+    fetch('update.php?action=rollback', { method: 'POST', body: formData })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                alert('回滚成功！即将刷新页面...');
+                setTimeout(function() { location.reload(); }, 1500);
+            } else {
+                alert('回滚失败: ' + (data.error || '未知错误'));
+            }
+        })
+        .catch(function(err) {
+            alert('请求失败: ' + err);
+        });
+}
+
+// 自动加载：进入更新页面后立即检查版本
+document.addEventListener('DOMContentLoaded', function() {
+    if ('<?php echo $currentSection; ?>' === 'update') {
+        checkUpdate(false);
+        loadBackupList();
+        loadUpdateHistory();
+    }
+});
+
+// ============================================
+// jQuery 模态框事件绑定
+// ============================================
 $(document).ready(function() {
     $('#confirmModalYes').on('click', function() {
         executeDelete();
@@ -730,278 +1007,6 @@ $(document).ready(function() {
             selectAll.checked = false;
         }
     });
-
-    // ============================================
-    // 系统更新相关 JavaScript
-    // ============================================
-    var updateCsrfToken = '<?php echo $csrfToken; ?>';
-    var currentVersion = '<?php echo htmlspecialchars(APP_VERSION); ?>';
-
-    function setUpdateStatus(message, type) {
-        var box = document.getElementById('updateStatus');
-        if (!box) return;
-        var iconClass = 'fas fa-info-circle';
-        var alertClass = 'alert alert-info';
-        if (type === 'success') { alertClass = 'alert alert-success'; iconClass = 'fas fa-check-circle'; }
-        else if (type === 'error') { alertClass = 'alert alert-danger'; iconClass = 'fas fa-exclamation-triangle'; }
-        else if (type === 'warning') { alertClass = 'alert alert-warning'; iconClass = 'fas fa-exclamation-circle'; }
-        box.className = alertClass;
-        box.innerHTML = '<i class="icon ' + iconClass + '"></i> ' + message;
-    }
-
-    function appendUpdateLog(line) {
-        var logBox = document.getElementById('updateLog');
-        if (logBox) {
-            logBox.textContent += line + '\n';
-            logBox.scrollTop = logBox.scrollHeight;
-        }
-    }
-
-    // 前端版本检查缓存配置（5 分钟内不重复请求，避免频繁调用 GitHub API）
-    var UPDATE_CHECK_LOCAL_CACHE_TTL = 5 * 60 * 1000;
-    var UPDATE_CHECK_LOCAL_CACHE_KEY = 'app_update_check_cache_v1';
-
-    // 渲染版本检查结果到页面（被 checkUpdate 和本地缓存共用）
-    function renderUpdateResult(data, fromCache, cacheTime) {
-        var latestText = document.getElementById('latestVersionText');
-        if (!data.success) {
-            latestText.textContent = '未知';
-            setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
-            return;
-        }
-        var latest = data.latest;
-        latestText.textContent = latest;
-
-        // 环境警告
-        if (data.env && !data.env.ok) {
-            var html = '<div class="alert alert-danger">';
-            html += '<i class="icon fas fa-exclamation-triangle"></i> 环境不满足更新要求:<ul class="mt-2">';
-            (data.env.errors || []).forEach(function (m) { html += '<li>' + m + '</li>'; });
-            html += '</ul></div>';
-            document.getElementById('envWarningBox').innerHTML = html;
-        } else if (data.env && data.env.warnings && data.env.warnings.length > 0) {
-            var whtml = '<div class="alert alert-warning">';
-            whtml += '<i class="icon fas fa-exclamation"></i> 警告:<ul class="mt-2">';
-            (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + m + '</li>'; });
-            whtml += '</ul></div>';
-            document.getElementById('envWarningBox').innerHTML = whtml;
-        }
-
-        if (data.has_update) {
-            var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
-            setUpdateStatus(
-                '发现新版本 <strong>' + latest + '</strong>（当前版本 ' + data.current + '）。建议立即更新。' + cacheHint,
-                'success'
-            );
-            document.getElementById('updateActionBox').style.display = 'block';
-            if (data.release) {
-                document.getElementById('releaseName').textContent = data.release.name || latest;
-                document.getElementById('releaseDate').textContent = data.release.published_at ? '  (' + data.release.published_at + ')' : '';
-                document.getElementById('releaseUrl').href = data.release.html_url || '#';
-                document.getElementById('releaseBody').textContent = data.release.body || '无发布说明';
-                document.getElementById('releaseInfoBox').style.display = 'block';
-            }
-        } else {
-            var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
-            setUpdateStatus('当前已是最新版本（' + data.current + '）' + cacheHint, 'info');
-            document.getElementById('latestVersionText').textContent = '已是最新';
-        }
-    }
-
-    function checkUpdate(force) {
-        var latestText = document.getElementById('latestVersionText');
-        if (latestText) latestText.textContent = '检查中...';
-        setUpdateStatus('正在检查 GitHub 最新版本...', 'info');
-        document.getElementById('updateActionBox').style.display = 'none';
-        document.getElementById('releaseInfoBox').style.display = 'none';
-        document.getElementById('envWarningBox').innerHTML = '';
-
-        // 非强制模式下优先使用前端 localStorage 缓存（5 分钟内避免频繁请求）
-        if (!force) {
-            try {
-                var rawCache = localStorage.getItem(UPDATE_CHECK_LOCAL_CACHE_KEY);
-                if (rawCache) {
-                    var cached = JSON.parse(rawCache);
-                    var age = Date.now() - (cached.timestamp || 0);
-                    if (cached.data && cached.data.success && age < UPDATE_CHECK_LOCAL_CACHE_TTL) {
-                        var cacheTimeStr = new Date(cached.timestamp).toLocaleString();
-                        renderUpdateResult(cached.data, true, cacheTimeStr);
-                        return;
-                    }
-                    // 缓存过期，清理
-                    localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY);
-                }
-            } catch (e) {
-                // localStorage 不可用，走正常请求
-            }
-        }
-
-        var url = 'update.php?action=check' + (force ? '&force=1' : '');
-        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (!data.success) {
-                    latestText.textContent = '未知';
-                    setUpdateStatus('检查失败: ' + (data.error || (data.errors && data.errors.join('; ')) || '未知错误'), 'error');
-                    return;
-                }
-                // 写入前端缓存（仅保存成功的响应，避免缓存错误）
-                try {
-                    localStorage.setItem(UPDATE_CHECK_LOCAL_CACHE_KEY, JSON.stringify({
-                        timestamp: Date.now(),
-                        data: data,
-                    }));
-                } catch (e) {}
-                renderUpdateResult(data, false, null);
-            })
-            .catch(function(err) {
-                document.getElementById('latestVersionText').textContent = '失败';
-                setUpdateStatus('网络请求失败，请检查网络或稍后再试', 'error');
-            });
-    }
-
-    function doUpdate() {
-        if (!confirm('确定要执行自动更新吗？此操作将下载并覆盖项目文件。更新过程中请不要关闭页面。')) {
-            return;
-        }
-        var btn = document.getElementById('updateBtn');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
-        document.getElementById('progressBar').style.display = 'block';
-        document.getElementById('updateLogBox').style.display = 'block';
-        document.getElementById('updateLog').textContent = '';
-        setUpdateStatus('正在执行更新，这可能需要几分钟时间...', 'info');
-        appendUpdateLog('[开始] 发起更新请求...');
-
-        var formData = new FormData();
-        formData.append('action', 'update');
-        formData.append('csrf_token', updateCsrfToken);
-
-        fetch('update.php?action=update', {
-            method: 'POST',
-            body: formData
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.logs && Array.isArray(data.logs)) {
-                data.logs.forEach(function(line) { appendUpdateLog(line); });
-            }
-            if (data.success) {
-                // 更新成功，清理前端缓存，确保下次进入页面获取最新版本信息
-                try { localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY); } catch (e) {}
-                setUpdateStatus('更新成功！当前版本已升级到 ' + (data.to_version || '最新版本') + '。请刷新页面确认。', 'success');
-                appendUpdateLog('[完成] 更新成功！');
-                btn.innerHTML = '<i class="fas fa-check"></i> 更新成功';
-                btn.className = 'btn btn-lg btn-success';
-                // 3秒后自动刷新
-                setTimeout(function() { location.reload(); }, 3000);
-            } else {
-                var msg = data.error || (data.errors && data.errors.join('；')) || '更新失败';
-                setUpdateStatus('更新失败: ' + msg, 'error');
-                appendUpdateLog('[失败] ' + msg);
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-download"></i> 重试更新';
-                btn.className = 'btn btn-lg btn-success';
-            }
-            document.getElementById('progressBar').style.display = 'none';
-            loadBackupList();
-            loadUpdateHistory();
-        })
-        .catch(function(err) {
-            setUpdateStatus('更新请求失败，请检查服务器日志', 'error');
-            document.getElementById('progressBar').style.display = 'none';
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-download"></i> 重新尝试';
-        });
-    }
-
-    function loadBackupList() {
-        fetch('update.php?action=backups', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var box = document.getElementById('backupList');
-                if (!data.success || !data.backups || data.backups.length === 0) {
-                    box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无备份文件</div>';
-                    return;
-                }
-                var html = '<table class="table table-striped"><thead><tr><th>文件名</th><th>大小 (KB)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
-                data.backups.forEach(function(b) {
-                    html += '<tr>';
-                    html += '<td>' + b.filename + '</td>';
-                    html += '<td>' + b.size + '</td>';
-                    html += '<td>' + b.time + '</td>';
-                    html += '<td><button type="button" class="btn btn-sm btn-warning" onclick="doRollback(\'' + b.filename + '\')">';
-                    html += '<i class="fas fa-undo"></i> 从此备份恢复</button></td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-                box.innerHTML = html;
-            })
-            .catch(function() {
-                document.getElementById('backupList').innerHTML = '<div class="text-danger">加载失败</div>';
-            });
-    }
-
-    function loadUpdateHistory() {
-        fetch('update.php?action=logs', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var box = document.getElementById('updateHistoryList');
-                if (!data.success || !data.logs || data.logs.length === 0) {
-                    box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
-                    return;
-                }
-                var html = '<table class="table table-striped"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
-                data.logs.forEach(function(log) {
-                    var statusClass = 'badge-info';
-                    var statusText = log.status;
-                    if (log.status === 'success') { statusClass = 'badge-success'; statusText = '成功'; }
-                    else if (log.status === 'failed') { statusClass = 'badge-danger'; statusText = '失败'; }
-                    else if (log.status === 'rollback') { statusClass = 'badge-warning'; statusText = '回滚'; }
-                    html += '<tr>';
-                    html += '<td>' + (log.timestamp || '-') + '</td>';
-                    html += '<td>' + (log.from_version || '-') + '</td>';
-                    html += '<td>' + (log.to_version || '-') + '</td>';
-                    html += '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
-                    html += '<td>' + (log.username || '-') + '</td>';
-                    html += '<td>' + (log.message || '-') + '</td>';
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-                box.innerHTML = html;
-            })
-            .catch(function() {
-                document.getElementById('updateHistoryList').innerHTML = '<div class="text-danger">加载失败</div>';
-            });
-    }
-
-    function doRollback(filename) {
-        if (!confirm('确定要从备份文件恢复吗？这将覆盖当前所有文件。此操作不可撤销。')) return;
-        var formData = new FormData();
-        formData.append('action', 'rollback');
-        formData.append('backup', filename);
-        formData.append('csrf_token', updateCsrfToken);
-        fetch('update.php?action=rollback', { method: 'POST', body: formData })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    alert('回滚成功！即将刷新页面...');
-                    setTimeout(function() { location.reload(); }, 1500);
-                } else {
-                    alert('回滚失败: ' + (data.error || '未知错误'));
-                }
-            })
-            .catch(function(err) {
-                alert('请求失败: ' + err);
-            });
-    }
-
-    // 自动加载：进入更新页面后立即检查版本
-    if ('<?php echo $currentSection; ?>' === 'update') {
-        checkUpdate(false);
-        loadBackupList();
-        loadUpdateHistory();
-    }
 });
 </script>
 </body>
