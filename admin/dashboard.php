@@ -699,38 +699,6 @@ function executeDelete() {
     $('#confirmModal').modal('hide');
 }
 
-$(document).ready(function() {
-    $('#confirmModalYes').on('click', function() {
-        executeDelete();
-    });
-
-    $('#confirmModalCancel').on('click', function() {
-        $('#confirmModal').modal('hide');
-    });
-
-    $('#confirmModalClose').on('click', function() {
-        $('#confirmModal').modal('hide');
-    });
-
-    $('#confirmModal').on('hidden.bs.modal', function() {
-        pendingDeleteUrl = '';
-        pendingDeleteType = '';
-        pendingDeleteToken = '';
-        selectedUrls = [];
-        var deleteBtn = document.getElementById('deleteSelectedBtn');
-        if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-        var checkboxes = document.querySelectorAll('.url-checkbox');
-        checkboxes.forEach(function(cb) {
-            cb.checked = false;
-        });
-        var selectAll = document.getElementById('selectAll');
-        if (selectAll) {
-            selectAll.checked = false;
-        }
-    });
-
     // ============================================
     // 系统更新相关 JavaScript
     // ============================================
@@ -997,12 +965,47 @@ $(document).ready(function() {
     }
 
     // 自动加载：进入更新页面后立即检查版本
-    if ('<?php echo $currentSection; ?>' === 'update') {
-        checkUpdate(false);
-        loadBackupList();
-        loadUpdateHistory();
-    }
+    document.addEventListener('DOMContentLoaded', function() {
+        if ('<?php echo $currentSection; ?>' === 'update') {
+            checkUpdate(false);
+            loadBackupList();
+            loadUpdateHistory();
+        }
+    });
+
+$(document).ready(function() {
+    $('#confirmModalYes').on('click', function() {
+        executeDelete();
+    });
+
+    $('#confirmModalCancel').on('click', function() {
+        $('#confirmModal').modal('hide');
+    });
+
+    $('#confirmModalClose').on('click', function() {
+        $('#confirmModal').modal('hide');
+    });
+
+    $('#confirmModal').on('hidden.bs.modal', function() {
+        pendingDeleteUrl = '';
+        pendingDeleteType = '';
+        pendingDeleteToken = '';
+        selectedUrls = [];
+        var deleteBtn = document.getElementById('deleteSelectedBtn');
+        if (deleteBtn) {
+            deleteBtn.style.display = 'none';
+        }
+        var checkboxes = document.querySelectorAll('.url-checkbox');
+        checkboxes.forEach(function(cb) {
+            cb.checked = false;
+        });
+        var selectAll = document.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.checked = false;
+        }
+    });
 });
+
 </script>
 </body>
 </html>
