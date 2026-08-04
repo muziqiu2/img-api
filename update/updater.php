@@ -243,8 +243,13 @@ class AppUpdater
         // 使用 curl 下载（支持大文件、超时控制）
         if (function_exists('curl_init')) {
             $ch = curl_init($url);
-            $fp = fopen($this->zipPath, 'w');
+            if ($ch === false) {
+                $this->errors[] = '无法初始化下载';
+                return false;
+            }
+            $fp = @fopen($this->zipPath, 'w');
             if (!$fp) {
+                curl_close($ch);
                 $this->errors[] = '无法创建下载文件';
                 return false;
             }
@@ -539,12 +544,14 @@ class AppUpdater
             return null; // 纯目录
         }
 
-        // 去掉第一层目录（GitHub 源码压缩包总是带一个顶层目录，如 repo-tag/）
+        // 去掉第一层目录（GitHub 源码压缩包总是带一个顶层目录，如 repo-sha/）
         $firstSlash = strpos($entryName, '/');
         if ($firstSlash !== false) {
             $topDir = substr($entryName, 0, $firstSlash);
-            // 如果顶层目录看起来是项目名（非空且包含 repo 相关信息），则去除
-            if (!empty($topDir) && !str_contains_custom($topDir, '.') && !in_array(strtolower($topDir), ['public', 'admin', 'data', 'update'])) {
+            // 仅当顶层目录以仓库名开头且带有后缀（如 img-api-abc123）时视为包根目录去除，
+            // 避免误剥更新包中真实存在的顶层目录（如 assets/、v3.2.0/ 等）
+            $repoLower = strtolower(GITHUB_REPO_NAME);
+            if (strlen($topDir) > strlen(GITHUB_REPO_NAME) && str_starts_with_custom(strtolower($topDir), $repoLower)) {
                 return substr($entryName, $firstSlash + 1);
             }
         }

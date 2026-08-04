@@ -34,6 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken($csrfToken)) {
     exit;
 }
 
+// 动作类型（必须在频率限制判断前定义）
+$action = isset($_GET['action']) ? $_GET['action'] : ($_POST['action'] ?? '');
+
 // 频率限制
 // 对于只读操作（check、backups、logs、env、settings），使用更宽松的限制（30次/分钟）
 // 对于写操作（update、rollback、save_token、delete_backup），使用严格的限制（10次/分钟）
@@ -55,8 +58,6 @@ if ($isReadOnly) {
         exit;
     }
 }
-
-$action = isset($_GET['action']) ? $_GET['action'] : ($_POST['action'] ?? '');
 
 try {
     switch ($action) {
