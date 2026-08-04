@@ -186,7 +186,7 @@ fetch('https://your-domain.com/pc.php?return=json')
 
 ## 当前版本
 
-v3.1.0
+v3.1.1
 
 ## 许可证
 

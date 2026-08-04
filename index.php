@@ -15,11 +15,11 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
     <meta name="description" content="提供高质量随机二次元图片API服务，支持PC/移动端自适应">
     
     <!-- 本地资源 -->
-    <link href="/public/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/public/css/all.min.css" rel="stylesheet">
-    <script src="/public/js/jquery.min.js"></script>
-    <script src="/public/js/chart.umd.min.js"></script>
-    <script src="/public/js/clipboard.min.js"></script>
+    <link href="public/css/bootstrap.min.css" rel="stylesheet">
+    <link href="public/css/all.min.css" rel="stylesheet">
+    <script src="public/js/jquery.min.js"></script>
+    <script src="public/js/chart.umd.min.js"></script>
+    <script src="public/js/clipboard.min.js"></script>
     
     <style>
         :root {
@@ -498,7 +498,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
         </div>
     </footer>
 
-    <script src="/public/js/bootstrap.bundle.min.js"></script>
+    <script src="public/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // 初始化复制功能
@@ -523,7 +523,10 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
             for (let i = 29; i >= 0; i--) {
                 const date = new Date(today);
                 date.setDate(date.getDate() - i);
-                last30Days.push(date.toISOString().split('T')[0]);
+                // 使用本地时区格式化日期，与后端 date('Y-m-d') 保持一致
+                last30Days.push(date.getFullYear() + '-' +
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(date.getDate()).padStart(2, '0'));
             }
             
             // 筛选最近30天的数据，如果数据不足30天则显示全部可用数据

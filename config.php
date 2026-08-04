@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.0'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.1'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -643,10 +643,57 @@ function clearImageUrls($type = 'pc') {
     return $result;
 }
 
-// 验证图片URL
+// 验证图片URL（含 SSRF 防护：仅允许公网 http/https 地址）
 function isValidImageUrl($url) {
     $url = trim($url);
-    return !empty($url) && filter_var($url, FILTER_VALIDATE_URL) !== false;
+    if (empty($url) || filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return false;
+    }
+
+    $parsed = parse_url($url);
+    $scheme = strtolower($parsed['scheme'] ?? '');
+    $host = $parsed['host'] ?? '';
+
+    if (!in_array($scheme, ['http', 'https'])) {
+        return false;
+    }
+    if (empty($host)) {
+        return false;
+    }
+
+    // 禁止本地主机名
+    $lowerHost = strtolower($host);
+    $localHostnames = ['localhost', 'localhost.localdomain', 'local', '127.0.0.1', '0.0.0.0', '[::1]'];
+    if (in_array($lowerHost, $localHostnames)) {
+        return false;
+    }
+
+    // 解析 IP 并禁止内网/保留地址
+    $ip = gethostbyname($host);
+    if ($ip === $host || empty($ip)) {
+        return false;
+    }
+
+    $forbiddenPatterns = [
+        '/^(10\.)/',
+        '/^172\.(1[6-9]|2[0-9]|3[01])\./',
+        '/^192\.168\./',
+        '/^127\./',
+        '/^169\.254\./',
+        '/^0\./',
+        '/^224\./',
+        '/^240\./',
+        '/^255\.255\.255\.255$/',
+        '/^(fe80|fc00|fd00|::1|fe80::)/i',
+        '/^\[/', // IPv6 raw
+    ];
+    foreach ($forbiddenPatterns as $pattern) {
+        if (preg_match($pattern, $ip)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // ==================== 缓存函数 ====================
@@ -673,18 +720,26 @@ function clearCachedImageUrls($type) {
 
 // ==================== 统计函数 ====================
 
-function updateCallCount($type, $returnType = 'redirect') {
+function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
     $date = date('Y-m-d');
     $db = getDb();
-    
+
+    // 计算各列增量；api 入口按实际设备类型（$deviceType）同时计入 pc/pe 分布
+    $isApi = ($type === 'api') ? 1 : 0;
+    $isPc = (($type === 'pc') || ($type === 'api' && $deviceType === 'pc')) ? 1 : 0;
+    $isPe = (($type === 'pe') || ($type === 'api' && $deviceType === 'pe')) ? 1 : 0;
+    $isRedirect = ($returnType === 'redirect') ? 1 : 0;
+    $isJson = ($returnType === 'json') ? 1 : 0;
+    $isImg = ($returnType === 'img') ? 1 : 0;
+
     // 检查今天的记录是否存在
     $stmt = $db->prepare("SELECT * FROM call_stats WHERE date = ?");
     $stmt->execute([$date]);
     $record = $stmt->fetch();
-    
+
     if ($record) {
         // 更新现有记录
-        $sql = "UPDATE call_stats SET 
+        $stmt = $db->prepare("UPDATE call_stats SET 
             total = total + 1,
             pc = pc + ?,
             pe = pe + ?,
@@ -692,33 +747,15 @@ function updateCallCount($type, $returnType = 'redirect') {
             redirect_count = redirect_count + ?,
             json_count = json_count + ?,
             img_count = img_count + ?
-            WHERE date = ?";
-        $stmt = $db->prepare($sql);
-        
-        $isApi = ($type === 'api') ? 1 : 0;
-        $isPc = ($type === 'pc') ? 1 : 0;
-        $isPe = ($type === 'pe') ? 1 : 0;
-        $isRedirect = ($returnType === 'redirect') ? 1 : 0;
-        $isJson = ($returnType === 'json') ? 1 : 0;
-        $isImg = ($returnType === 'img') ? 1 : 0;
-        
+            WHERE date = ?");
         $stmt->execute([$isPc, $isPe, $isApi, $isRedirect, $isJson, $isImg, $date]);
     } else {
         // 插入新记录
-        $sql = "INSERT INTO call_stats (date, total, pc, pe, api_count, redirect_count, json_count, img_count)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?)";
-        $stmt = $db->prepare($sql);
-        
-        $isApi = ($type === 'api') ? 1 : 0;
-        $isPc = ($type === 'pc') ? 1 : 0;
-        $isPe = ($type === 'pe') ? 1 : 0;
-        $isRedirect = ($returnType === 'redirect') ? 1 : 0;
-        $isJson = ($returnType === 'json') ? 1 : 0;
-        $isImg = ($returnType === 'img') ? 1 : 0;
-        
+        $stmt = $db->prepare("INSERT INTO call_stats (date, total, pc, pe, api_count, redirect_count, json_count, img_count)
+            VALUES (?, 1, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$date, $isPc, $isPe, $isApi, $isRedirect, $isJson, $isImg]);
     }
-    
+
     return getCallCount();
 }
 
@@ -946,10 +983,9 @@ function fetchRemoteImage($url) {
     ];
     if (strlen($data) >= 4) {
         $signature = bin2hex(substr($data, 0, 4));
-        $first2 = substr($signature, 0, 4);
         $isValidImage = false;
         foreach ($allowedSignatures as $sig => $type) {
-            if (strpos($signature, $sig) === 0 || strpos($first2, $sig) === 0) {
+            if (strpos($signature, $sig) === 0) {
                 $isValidImage = true;
                 break;
             }
@@ -999,7 +1035,9 @@ function handleImageApiRequest($type, $countType = null) {
     if ($countType === null) {
         $countType = $type;
     }
-    updateCallCount($countType, $returnType);
+    // api 入口按实际设备类型同时计入 pc/pe 分布统计
+    $deviceHint = ($countType === 'api') ? $type : null;
+    updateCallCount($countType, $returnType, $deviceHint);
 
     if (!$imageUrl) {
         $errorMsg = ($type === 'pc') ? '没有找到可用的PC端图片' :
@@ -1096,8 +1134,7 @@ function isMobileDevice() {
 function getAppVersion() {
     if (file_exists(APP_VERSION_FILE)) {
         $v = trim(file_get_contents(APP_VERSION_FILE));
-        if (!empty($v)) return APP_VERSION;
-        return $v;
+        if (!empty($v)) return $v;
     }
     return APP_VERSION;
 }

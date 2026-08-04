@@ -7,12 +7,6 @@ if (!IS_LOGGED_IN) {
     exit;
 }
 
-// 检查管理后台频率限制
-if (!checkAdminRateLimit()) {
-    $message = "请求过于频繁，请稍后再试";
-    $messageType = 'error';
-}
-
 // 获取当前分区
 $currentSection = isset($_GET['section']) ? $_GET['section'] : 'management';
 
@@ -24,27 +18,16 @@ $currentType = isset($_GET['type']) && $_GET['type'] === 'pe' ? 'pe' : 'pc';
 $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $perPage = 10;
 
-// 处理删除请求 (支持 GET 方式)
-if (isset($_GET['delete']) && isset($_GET['token'])) {
-    $deleteUrl = $_GET['delete'];
-    $token = $_GET['token'];
-    if (validateCsrfToken($token)) {
-        if (deleteImageUrl($deleteUrl, $currentType)) {
-            $message = "图片链接已成功删除";
-            $messageType = 'success';
-            logAdminAction("删除了" . ($currentType === 'pc' ? 'PC端' : '移动端') . "图片链接: $deleteUrl");
-        } else {
-            $message = "删除失败，未找到该图片链接";
-            $messageType = 'error';
-        }
-    }
-    // 清理 URL 参数，避免重复执行
-    header('Location: ?section=management&type=' . $currentType);
-    exit;
+// 检查管理后台频率限制（限频时禁止所有写操作）
+$rateLimited = false;
+if (!checkAdminRateLimit()) {
+    $rateLimited = true;
+    $message = "请求过于频繁，请稍后再试";
+    $messageType = 'error';
 }
 
-// 处理添加URL
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection === 'management') {
+// 处理表单提交（限频时跳过所有写操作）
+if (!$rateLimited && $_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection === 'management') {
     if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
         $message = "安全验证失败，请刷新页面重试";
         $messageType = 'error';
@@ -88,19 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection === 'management') {
                 $messageType = 'error';
             }
         }
-        elseif (isset($_POST['clear_all'])) {
-            if (clearImageUrls($currentType)) {
-                $message = "所有图片链接已清空";
-                $messageType = 'success';
-                logAdminAction("清空了所有" . ($currentType === 'pc' ? 'PC端' : '移动端') . "图片链接");
-            } else {
-                $message = "清空失败，请重试";
-                $messageType = 'error';
-            }
-        }
     }
 }
-elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection === 'user') {
+elseif (!$rateLimited && $_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection === 'user') {
     if (isset($_POST['update_user'])) {
         if (!isset($_POST['csrf_token']) || !validateCsrfToken($_POST['csrf_token'])) {
             $message = "安全验证失败，请刷新页面重试";
@@ -181,7 +154,7 @@ $currentUsername = getCurrentUsername();
     <!-- Google Font -->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
     <!-- Font Awesome -->
-    <link rel="stylesheet" href="/public/css/all.min.css">
+    <link rel="stylesheet" href="../public/css/all.min.css">
     <!-- Theme style -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 </head>
@@ -358,7 +331,7 @@ $currentUsername = getCurrentUsername();
                         <h3 class="card-title">
                             <?php echo $currentType === 'pc' ? 'PC端' : '移动端'; ?>图片链接列表 (共 <?php echo $imageData['total']; ?> 个)
                         </h3>
-                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected(<?php echo htmlspecialchars(json_encode($currentType), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($csrfToken), ENT_QUOTES); ?>)" style="display:none;">
+                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected(<?php echo json_encode($currentType, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode($csrfToken, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)" style="display:none;">
                             <i class="fas fa-trash"></i> 删除选中
                         </button>
                     </div>
@@ -381,7 +354,7 @@ $currentUsername = getCurrentUsername();
                                         </a>
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm(<?php echo htmlspecialchars(json_encode($url), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($currentType), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($csrfToken), ENT_QUOTES); ?>)">
+                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm(<?php echo json_encode($url, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode($currentType, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode($csrfToken, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
@@ -648,9 +621,9 @@ $currentUsername = getCurrentUsername();
 </div>
 
 <!-- jQuery -->
-<script src="/public/js/jquery.min.js"></script>
+<script src="../public/js/jquery.min.js"></script>
 <!-- Bootstrap -->
-<script src="/public/js/bootstrap.bundle.min.js"></script>
+<script src="../public/js/bootstrap.bundle.min.js"></script>
 <!-- AdminLTE App -->
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 <!-- 自定义确认模态框处理 -->
@@ -725,8 +698,25 @@ function executeDelete() {
         document.body.appendChild(form);
         form.submit();
     } else if (pendingDeleteUrl) {
-        var redirectUrl = '?section=management&type=' + encodeURIComponent(pendingDeleteType) + '&delete=' + encodeURIComponent(pendingDeleteUrl) + '&token=' + encodeURIComponent(pendingDeleteToken);
-        window.location.href = redirectUrl;
+        // 单条删除同样使用 POST 表单提交（避免 GET 副作用与 token 泄露）
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = '?section=management&type=' + encodeURIComponent(pendingDeleteType);
+
+        var csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = pendingDeleteToken;
+        form.appendChild(csrfInput);
+
+        var urlInput = document.createElement('input');
+        urlInput.type = 'hidden';
+        urlInput.name = 'delete_url';
+        urlInput.value = pendingDeleteUrl;
+        form.appendChild(urlInput);
+
+        document.body.appendChild(form);
+        form.submit();
     }
     $('#confirmModal').modal('hide');
 }
