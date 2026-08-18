@@ -27,3 +27,6 @@ Thumbs.db
 
 # 日志文件
 *.log
+
+# WorkBuddy 项目本地数据（记忆、任务等，不应提交）
+.workbuddy/
