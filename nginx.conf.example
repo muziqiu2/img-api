@@ -1,0 +1,58 @@
+# ============================================================
+# 魔法师随机图片API - Nginx 部署配置示例
+#
+# 重要：项目自带的 .htaccess 仅对 Apache 生效。
+# 若使用 Nginx，必须将以下规则合并到你的 server 块中，
+# 否则 data/app.db 与 data/backups/*.zip 等敏感文件可被公网直接下载！
+#
+# 用法：把本文件中的 location 规则复制到你的 server { ... } 中，
+# 并按实际环境修改 fastcgi_pass 指向的 PHP-FPM 套接字/端口。
+# ============================================================
+
+server {
+    # ... 你的 server 配置（listen、server_name、root 等） ...
+
+    # ---------- PHP 转发（PHP 7.4+）----------
+    # location ~ \.php$ {
+    #     include        fastcgi_params;
+    #     fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+    #     fastcgi_pass   unix:/run/php/php7.4-fpm.sock;  # 按实际 PHP-FPM 修改
+    #     fastcgi_index  index.php;
+    # }
+
+    # ============================================================
+    # 安全规则（必配）
+    # ============================================================
+
+    # ---------- 敏感目录：直接 403 ----------
+    # data/（数据库、缓存、备份、更新临时文件）与 admin/logs/（日志）
+    location ~ ^/(data|admin\/logs)/ {
+        deny all;
+        return 403;
+    }
+
+    # ---------- 压缩包兜底：禁止下载任何 .zip ----------
+    # 防止备份文件通过其他路径泄露
+    location ~* \.zip$ {
+        deny all;
+        return 403;
+    }
+
+    # ---------- 隐藏文件与目录（.git、.htaccess、.router.php 等）----------
+    location ~ /\. {
+        deny all;
+        return 403;
+    }
+
+    # ---------- 敏感脚本兜底（若存在请删除）----------
+    location ~ ^/(reset_config|generate_mock_stats)\.php$ {
+        deny all;
+        return 403;
+    }
+
+    # ---------- 开发用内置服务器路由文件（线上不需要）----------
+    location = /.router.php {
+        deny all;
+        return 403;
+    }
+}

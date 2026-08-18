@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.1'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.2'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -121,7 +121,8 @@ function getDb() {
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         } catch (PDOException $e) {
-            die('数据库连接失败: ' . $e->getMessage());
+            @error_log('[img-api] 数据库连接失败: ' . $e->getMessage());
+            die('数据库连接失败，请检查服务器配置或查看服务器错误日志');
         }
     }
 
@@ -277,15 +278,11 @@ function getUserConfig() {
     $result = $stmt->fetch();
     
     if (!$result) {
-        // 创建默认配置
-        $stmt = $db->prepare("
-            INSERT INTO user_config (username, password_hash, login_attempts, last_attempt, locked_until)
-            VALUES ('admin', ?, 0, 0, 0)
-        ");
-        $stmt->execute([password_hash('123456', PASSWORD_DEFAULT)]);
+        // 记录异常：用户配置缺失时不再静默重建默认账号（避免密码被静默重置回默认值）
+        @error_log('[img-api] user_config 记录缺失，请检查数据库完整性 (data/app.db)');
         return [
-            'username' => 'admin',
-            'password_hash' => password_hash('123456', PASSWORD_DEFAULT),
+            'username' => '',
+            'password_hash' => '',
             'login_attempts' => 0,
             'last_attempt' => 0,
             'locked_until' => 0
@@ -337,6 +334,15 @@ function updateUserInfo($newUsername, $newPassword = '') {
         $stmt = $db->prepare("UPDATE user_config SET username = ? WHERE id = 1");
         return $stmt->execute([$newUsername]);
     }
+}
+
+// 检测是否仍在使用默认密码（用于强制修改提示）
+function isDefaultPassword() {
+    $config = getUserConfig();
+    if (empty($config['password_hash'])) {
+        return false; // 配置异常时不做判断，避免误锁
+    }
+    return password_verify('123456', $config['password_hash']);
 }
 
 function recordLoginAttempt($success = false) {
@@ -424,17 +430,18 @@ function validateCsrfToken($token) {
 
 // ==================== 频率限制函数 ====================
 
-function checkApiRateLimit() {
-    $ip = md5(getClientIp());
-    $key = 'api_' . $ip;
+// 通用频率限制核心：原子递增 + 超限补偿回退 + 概率化清理过期记录
+function applyRateLimit($key, $maxRequests, $windowSeconds) {
     $now = time();
-    $windowStart = $now - RATE_LIMIT_WINDOW;
+    $windowStart = $now - $windowSeconds;
 
     $db = getDb();
 
-    // 清理过期记录
-    $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
-    $stmt->execute([$windowStart]);
+    // 概率化清理过期记录（避免每次请求都执行全表 DELETE，降低 SQLite 写负载）
+    if (mt_rand(1, 50) === 1) {
+        $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
+        $stmt->execute([$windowStart]);
+    }
 
     // 先检查当前计数是否已超过限制
     $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
@@ -442,12 +449,11 @@ function checkApiRateLimit() {
     $record = $stmt->fetch();
 
     // 如果已超过限制，直接拒绝
-    if ($record && $record['count'] >= RATE_LIMIT_MAX_API) {
+    if ($record && (int)$record['count'] >= $maxRequests) {
         return false;
     }
 
-    // 尝试原子地增加计数（使用 UPDATE ... WHERE 确保原子性）
-    // 如果记录不存在或已过期，插入新记录；否则在 count < 限制时递增
+    // 原子地增加计数（UPSERT：窗口过期则重置为 1，否则 +1）
     $stmt = $db->prepare("
         INSERT INTO rate_limits (id, count, timestamp)
         VALUES (?, 1, ?)
@@ -457,15 +463,22 @@ function checkApiRateLimit() {
     ");
     $stmt->execute([$key, $now, $windowStart, $windowStart, $now]);
 
-    // 再次检查：获取最新计数，如果超过限制则表示刚才的递增导致了超限，需要回滚
-    // 但 SQLite 不支持读后写的锁（SELECT 后 UPDATE 不是原子的）
-    // 所以我们接受在极端竞态下可能多允许 1 个请求的情况
+    // 复查：若本次递增导致超限，补偿回退（近似回滚，最多瞬时超限 1 个请求）
     $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
     $stmt->execute([$key]);
     $record = $stmt->fetch();
+    if ($record && (int)$record['count'] > $maxRequests) {
+        $stmt = $db->prepare("UPDATE rate_limits SET count = count - 1 WHERE id = ?");
+        $stmt->execute([$key]);
+        return false;
+    }
 
-    // 如果超过限制，返回 false（这次请求被拒绝）
-    return !$record || $record['count'] <= RATE_LIMIT_MAX_API;
+    return true;
+}
+
+function checkApiRateLimit() {
+    $ip = md5(getClientIp());
+    return applyRateLimit('api_' . $ip, RATE_LIMIT_MAX_API, RATE_LIMIT_WINDOW);
 }
 
 function checkAdminRateLimit() {
@@ -474,42 +487,7 @@ function checkAdminRateLimit() {
     }
 
     $username = md5($_SESSION['admin_username'] ?? 'unknown');
-    $key = 'admin_' . $username;
-    $now = time();
-    $windowStart = $now - RATE_LIMIT_WINDOW;
-
-    $db = getDb();
-
-    // 清理过期记录
-    $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
-    $stmt->execute([$windowStart]);
-
-    // 先检查当前计数是否已超过限制
-    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
-    $stmt->execute([$key]);
-    $record = $stmt->fetch();
-
-    // 如果已超过限制，直接拒绝
-    if ($record && $record['count'] >= RATE_LIMIT_MAX_ADMIN) {
-        return false;
-    }
-
-    // 尝试原子地增加计数
-    $stmt = $db->prepare("
-        INSERT INTO rate_limits (id, count, timestamp)
-        VALUES (?, 1, ?)
-        ON CONFLICT(id) DO UPDATE
-        SET count = CASE WHEN timestamp < ? THEN 1 ELSE count + 1 END,
-            timestamp = CASE WHEN timestamp < ? THEN ? ELSE timestamp END
-    ");
-    $stmt->execute([$key, $now, $windowStart, $windowStart, $now]);
-
-    // 再次检查
-    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
-    $stmt->execute([$key]);
-    $record = $stmt->fetch();
-
-    return !$record || $record['count'] <= RATE_LIMIT_MAX_ADMIN;
+    return applyRateLimit('admin_' . $username, RATE_LIMIT_MAX_ADMIN, RATE_LIMIT_WINDOW);
 }
 
 // 通用管理后台频率限制函数（可自定义最大请求数）
@@ -519,42 +497,7 @@ function checkAdminRateLimitGeneric($maxRequests = 30, $windowSeconds = 60) {
     }
 
     $username = md5($_SESSION['admin_username'] ?? 'unknown');
-    $key = 'admin_generic_' . $username . '_' . $maxRequests;
-    $now = time();
-    $windowStart = $now - $windowSeconds;
-
-    $db = getDb();
-
-    // 清理过期记录
-    $stmt = $db->prepare("DELETE FROM rate_limits WHERE timestamp < ?");
-    $stmt->execute([$windowStart]);
-
-    // 先检查当前计数是否已超过限制
-    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
-    $stmt->execute([$key]);
-    $record = $stmt->fetch();
-
-    // 如果已超过限制，直接拒绝
-    if ($record && $record['count'] >= $maxRequests) {
-        return false;
-    }
-
-    // 尝试原子地增加计数
-    $stmt = $db->prepare("
-        INSERT INTO rate_limits (id, count, timestamp)
-        VALUES (?, 1, ?)
-        ON CONFLICT(id) DO UPDATE
-        SET count = CASE WHEN timestamp < ? THEN 1 ELSE count + 1 END,
-            timestamp = CASE WHEN timestamp < ? THEN ? ELSE timestamp END
-    ");
-    $stmt->execute([$key, $now, $windowStart, $windowStart, $now]);
-
-    // 再次检查
-    $stmt = $db->prepare("SELECT count FROM rate_limits WHERE id = ?");
-    $stmt->execute([$key]);
-    $record = $stmt->fetch();
-
-    return !$record || $record['count'] <= $maxRequests;
+    return applyRateLimit('admin_generic_' . $username . '_' . $maxRequests, $maxRequests, $windowSeconds);
 }
 
 // ==================== 图片管理函数 ====================
@@ -643,9 +586,12 @@ function clearImageUrls($type = 'pc') {
     return $result;
 }
 
-// 验证图片URL（含 SSRF 防护：仅允许公网 http/https 地址）
-function isValidImageUrl($url) {
+// 安全 URL 校验（含 SSRF 防护：仅允许公网 http/https 地址）
+// 校验通过时通过引用返回解析结果（host/ip/port），供 fetchRemoteImage 固定 IP 使用
+function isSafeRemoteUrl($url, &$resolved = null) {
+    $resolved = null;
     $url = trim($url);
+
     if (empty($url) || filter_var($url, FILTER_VALIDATE_URL) === false) {
         return false;
     }
@@ -693,7 +639,53 @@ function isValidImageUrl($url) {
         }
     }
 
+    // 端口白名单（仅允许常见 Web 端口，防止探测内网非 Web 服务）
+    $port = $parsed['port'] ?? null;
+    if ($port !== null && !in_array((int)$port, [80, 443, 8080, 8443])) {
+        return false;
+    }
+
+    $resolved = [
+        'host'   => $host,
+        'ip'     => $ip,
+        'port'   => $port !== null ? (int)$port : ($scheme === 'https' ? 443 : 80),
+        'scheme' => $scheme,
+        'url'    => $url,
+    ];
     return true;
+}
+
+// 验证图片URL（兼容旧接口，实际委托给 isSafeRemoteUrl）
+function isValidImageUrl($url) {
+    return isSafeRemoteUrl($url);
+}
+
+// 将（可能是相对的）重定向地址解析为绝对地址
+function resolveRelativeUrl($baseUrl, $redirectUrl) {
+    $redirectUrl = trim($redirectUrl);
+    if (filter_var($redirectUrl, FILTER_VALIDATE_URL)) {
+        return $redirectUrl;
+    }
+
+    $parsed = parse_url($baseUrl);
+    $scheme = $parsed['scheme'] ?? 'http';
+    $host = $parsed['host'] ?? '';
+    if (empty($host)) {
+        return $redirectUrl;
+    }
+    $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+    $origin = $scheme . '://' . $host . $port;
+
+    if (strpos($redirectUrl, '//') === 0) {
+        return $scheme . ':' . $redirectUrl;
+    }
+    if (strpos($redirectUrl, '/') === 0) {
+        return $origin . $redirectUrl;
+    }
+    // 相对路径：基于当前路径的目录部分拼接
+    $path = $parsed['path'] ?? '/';
+    $baseDir = preg_replace('#/[^/]*$#', '/', $path);
+    return $origin . $baseDir . $redirectUrl;
 }
 
 // ==================== 缓存函数 ====================
@@ -720,17 +712,44 @@ function clearCachedImageUrls($type) {
 
 // ==================== 统计函数 ====================
 
-function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
-    $date = date('Y-m-d');
-    $db = getDb();
+// 当日统计缓冲文件路径
+function statsBufferFile($date = null) {
+    if ($date === null) {
+        $date = date('Y-m-d');
+    }
+    return CACHE_DIR . '/call_stats_' . $date . '.json';
+}
 
-    // 计算各列增量；api 入口按实际设备类型（$deviceType）同时计入 pc/pe 分布
-    $isApi = ($type === 'api') ? 1 : 0;
-    $isPc = (($type === 'pc') || ($type === 'api' && $deviceType === 'pc')) ? 1 : 0;
-    $isPe = (($type === 'pe') || ($type === 'api' && $deviceType === 'pe')) ? 1 : 0;
-    $isRedirect = ($returnType === 'redirect') ? 1 : 0;
-    $isJson = ($returnType === 'json') ? 1 : 0;
-    $isImg = ($returnType === 'img') ? 1 : 0;
+// 读取当日统计缓冲（无缓冲或损坏时返回全零）
+function readStatsBuffer($date = null) {
+    $file = statsBufferFile($date);
+    if (!file_exists($file)) {
+        return ['total' => 0, 'pc' => 0, 'pe' => 0, 'api' => 0, 'redirect' => 0, 'json' => 0, 'img' => 0];
+    }
+    $data = @json_decode(file_get_contents($file), true);
+    return is_array($data) ? array_merge(
+        ['total' => 0, 'pc' => 0, 'pe' => 0, 'api' => 0, 'redirect' => 0, 'json' => 0, 'img' => 0],
+        $data
+    ) : ['total' => 0, 'pc' => 0, 'pe' => 0, 'api' => 0, 'redirect' => 0, 'json' => 0, 'img' => 0];
+}
+
+// 原子写入统计缓冲（先写临时文件再 rename）
+function writeStatsBuffer($data, $date = null) {
+    $file = statsBufferFile($date);
+    $dir = dirname($file);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    $tmp = $file . '.tmp.' . getmypid() . '.' . uniqid();
+    if (@file_put_contents($tmp, json_encode($data)) === false) {
+        return false;
+    }
+    return @rename($tmp, $file);
+}
+
+// 直接把增量写入 SQLite（降级路径 / 缓冲合并使用）
+function writeCallStatsDirect($date, $isApi, $isPc, $isPe, $isRedirect, $isJson, $isImg, $totalInc = 1) {
+    $db = getDb();
 
     // 检查今天的记录是否存在
     $stmt = $db->prepare("SELECT * FROM call_stats WHERE date = ?");
@@ -740,7 +759,7 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
     if ($record) {
         // 更新现有记录
         $stmt = $db->prepare("UPDATE call_stats SET 
-            total = total + 1,
+            total = total + ?,
             pc = pc + ?,
             pe = pe + ?,
             api_count = api_count + ?,
@@ -748,21 +767,128 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
             json_count = json_count + ?,
             img_count = img_count + ?
             WHERE date = ?");
-        $stmt->execute([$isPc, $isPe, $isApi, $isRedirect, $isJson, $isImg, $date]);
+        $stmt->execute([$totalInc, $isPc, $isPe, $isApi, $isRedirect, $isJson, $isImg, $date]);
     } else {
         // 插入新记录
         $stmt = $db->prepare("INSERT INTO call_stats (date, total, pc, pe, api_count, redirect_count, json_count, img_count)
-            VALUES (?, 1, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$date, $isPc, $isPe, $isApi, $isRedirect, $isJson, $isImg]);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$date, $totalInc, $isPc, $isPe, $isApi, $isRedirect, $isJson, $isImg]);
+    }
+    return true;
+}
+
+// 把当日统计缓冲合并进 SQLite 并清空缓冲（在读取统计时调用）
+function flushStatsBuffer($date = null) {
+    if ($date === null) {
+        $date = date('Y-m-d');
+    }
+    $file = statsBufferFile($date);
+    if (!file_exists($file)) {
+        return;
+    }
+    $buf = readStatsBuffer($date);
+    if (($buf['total'] ?? 0) <= 0) {
+        @unlink($file);
+        return;
+    }
+    writeCallStatsDirect(
+        $date,
+        (int)($buf['api'] ?? 0),
+        (int)($buf['pc'] ?? 0),
+        (int)($buf['pe'] ?? 0),
+        (int)($buf['redirect'] ?? 0),
+        (int)($buf['json'] ?? 0),
+        (int)($buf['img'] ?? 0),
+        (int)($buf['total'] ?? 0)
+    );
+    @unlink($file);
+}
+
+// 归档过期统计：每日明细保留 365 天，总量累加到 __history__ 行永久保留
+function archiveOldCallStats() {
+    // 每天只归档一次
+    $markerFile = CACHE_DIR . '/stats_archive_marker';
+    if (file_exists($markerFile) && date('Y-m-d', filemtime($markerFile)) === date('Y-m-d')) {
+        return;
+    }
+    @touch($markerFile);
+
+    $db = getDb();
+    $cutoff = date('Y-m-d', strtotime('-365 days'));
+
+    // 汇总过期明细各列总量
+    $stmt = $db->prepare("SELECT 
+        COALESCE(SUM(total),0) as t, COALESCE(SUM(pc),0) as pc, COALESCE(SUM(pe),0) as pe,
+        COALESCE(SUM(api_count),0) as api, COALESCE(SUM(redirect_count),0) as rd,
+        COALESCE(SUM(json_count),0) as js, COALESCE(SUM(img_count),0) as im
+        FROM call_stats WHERE date < ? AND date != '__history__'");
+    $stmt->execute([$cutoff]);
+    $row = $stmt->fetch();
+
+    if ($row && (int)$row['t'] > 0) {
+        // 累加到历史归档行（保证总调用次数永久保留）
+        $stmt = $db->prepare("INSERT INTO call_stats (date, total, pc, pe, api_count, redirect_count, json_count, img_count)
+            VALUES ('__history__', ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                total = total + excluded.total,
+                pc = pc + excluded.pc,
+                pe = pe + excluded.pe,
+                api_count = api_count + excluded.api_count,
+                redirect_count = redirect_count + excluded.redirect_count,
+                json_count = json_count + excluded.json_count,
+                img_count = img_count + excluded.img_count");
+        $stmt->execute([(int)$row['t'], (int)$row['pc'], (int)$row['pe'], (int)$row['api'], (int)$row['rd'], (int)$row['js'], (int)$row['im']]);
     }
 
-    return getCallCount();
+    // 删除过期明细
+    $stmt = $db->prepare("DELETE FROM call_stats WHERE date < ? AND date != '__history__'");
+    $stmt->execute([$cutoff]);
+}
+
+// 统计写入：先更新文件缓冲（低开销，不触碰 SQLite 写锁），读取统计时再合并入库
+function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
+    $date = date('Y-m-d');
+
+    // 计算各列增量；api 入口按实际设备类型（$deviceType）同时计入 pc/pe 分布
+    $isApi = ($type === 'api') ? 1 : 0;
+    $isPc = (($type === 'pc') || ($type === 'api' && $deviceType === 'pc')) ? 1 : 0;
+    $isPe = (($type === 'pe') || ($type === 'api' && $deviceType === 'pe')) ? 1 : 0;
+    $isRedirect = ($returnType === 'redirect') ? 1 : 0;
+    $isJson = ($returnType === 'json') ? 1 : 0;
+    $isImg = ($returnType === 'img') ? 1 : 0;
+
+    // 文件缓冲：flock 锁文件保护临界区，数据用 tmp+rename 原子写入
+    $lockFile = statsBufferFile($date) . '.lock';
+    $fp = @fopen($lockFile, 'c');
+    if ($fp === false || !flock($fp, LOCK_EX)) {
+        if (is_resource($fp)) fclose($fp);
+        // 降级：直接写库
+        return writeCallStatsDirect($date, $isApi, $isPc, $isPe, $isRedirect, $isJson, $isImg);
+    }
+
+    $buf = readStatsBuffer($date);
+    $buf['total'] = (int)($buf['total'] ?? 0) + 1;
+    $buf['pc'] = (int)($buf['pc'] ?? 0) + $isPc;
+    $buf['pe'] = (int)($buf['pe'] ?? 0) + $isPe;
+    $buf['api'] = (int)($buf['api'] ?? 0) + $isApi;
+    $buf['redirect'] = (int)($buf['redirect'] ?? 0) + $isRedirect;
+    $buf['json'] = (int)($buf['json'] ?? 0) + $isJson;
+    $buf['img'] = (int)($buf['img'] ?? 0) + $isImg;
+    writeStatsBuffer($buf, $date);
+
+    flock($fp, LOCK_UN);
+    fclose($fp);
+    return true;
 }
 
 function getCallCount() {
+    // 读取前先合并当日缓冲并归档过期明细
+    flushStatsBuffer();
+    archiveOldCallStats();
+
     $db = getDb();
     
-    // 获取总调用
+    // 获取总调用（SUM 包含 __history__ 归档行，总调用次数永久保留）
     $stmt = $db->prepare("SELECT 
         COALESCE(SUM(total), 0) as total,
         COALESCE(SUM(pc), 0) as pc,
@@ -775,8 +901,8 @@ function getCallCount() {
     $stmt->execute();
     $totals = $stmt->fetch();
     
-    // 获取每日数据
-    $stmt = $db->prepare("SELECT date, total, pc, pe, api_count FROM call_stats ORDER BY date DESC LIMIT 365");
+    // 获取每日数据（排除历史归档行，仅保留 365 天明细）
+    $stmt = $db->prepare("SELECT date, total, pc, pe, api_count FROM call_stats WHERE date != '__history__' ORDER BY date DESC LIMIT 365");
     $stmt->execute();
     $daily = [];
     while ($row = $stmt->fetch()) {
@@ -802,6 +928,10 @@ function getCallCount() {
 }
 
 function getTotalCalls() {
+    // 读取前先合并当日缓冲
+    flushStatsBuffer();
+    archiveOldCallStats();
+
     $db = getDb();
     $stmt = $db->prepare("SELECT COALESCE(SUM(total), 0) as total FROM call_stats");
     $stmt->execute();
@@ -817,7 +947,13 @@ function logAdminAction($action) {
     $username = getCurrentUsername();
 
     $stmt = $db->prepare("INSERT INTO admin_logs (time, username, ip, action) VALUES (?, ?, ?, ?)");
-    return $stmt->execute([$time, $username, $ip, $action]);
+    $result = $stmt->execute([$time, $username, $ip, $action]);
+
+    // 保留策略：操作日志最多保留 1000 条，防止无限增长
+    $stmt = $db->prepare("DELETE FROM admin_logs WHERE id NOT IN (SELECT id FROM admin_logs ORDER BY id DESC LIMIT 1000)");
+    $stmt->execute();
+
+    return $result;
 }
 
 function getAdminLogs($limit = 100) {
@@ -852,83 +988,38 @@ function getRandomImageUrl($type = 'pc') {
     return $validUrls[array_rand($validUrls)];
 }
 
-// SSRF防护：安全获取远程图片
+// SSRF防护：安全获取远程图片（每一跳重定向均重新校验，防止重定向绕过防护）
 function fetchRemoteImage($url) {
-    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+    // 初始 URL 校验并取得固定解析结果
+    if (!isSafeRemoteUrl($url, $resolved)) {
         return false;
     }
 
-    $parsed = parse_url($url);
-    $scheme = strtolower($parsed['scheme'] ?? '');
-    $host = $parsed['host'] ?? '';
-
-    if (!in_array($scheme, ['http', 'https'])) {
-        return false;
-    }
-
-    if (empty($host)) {
-        return false;
-    }
-
-    // 禁止访问本地服务
-    $lowerHost = strtolower($host);
-    $localHostnames = ['localhost', 'localhost.localdomain', 'local', '127.0.0.1', '0.0.0.0'];
-    foreach ($localHostnames as $lh) {
-        if ($lowerHost === $lh) {
-            return false;
-        }
-    }
-
-    // 解析IP并验证
-    $ip = gethostbyname($host);
-    if ($ip === $host || empty($ip)) {
-        return false;
-    }
-
-    $forbiddenPatterns = [
-        '/^(10\.)/',
-        '/^172\.(1[6-9]|2[0-9]|3[01])\./',
-        '/^192\.168\./',
-        '/^127\./',
-        '/^169\.254\./',
-        '/^0\./',
-        '/^224\./',
-        '/^240\./',
-        '/^255\.255\.255\.255$/',
-        '/^(fe80|fc00|fd00|::1|fe80::)/i',
-        '/^\[/', // IPv6 raw
+    // Content-Type 白名单
+    $allowedTypes = [
+        'image/jpeg' => true, 'image/jpg' => true,
+        'image/png' => true, 'image/gif' => true,
+        'image/webp' => true, 'image/bmp' => true,
+        'image/svg+xml' => true, 'image/x-icon' => true,
     ];
-
-    foreach ($forbiddenPatterns as $pattern) {
-        if (preg_match($pattern, $ip)) {
-            return false;
-        }
-    }
-
-    $port = $parsed['port'] ?? null;
-    if ($port !== null && !in_array((int)$port, [80, 443, 8080, 8443])) {
-        return false;
-    }
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; ImageFetcher/1.0)');
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-
-    // 强制使用已验证的IP，防止DNS重绑定攻击
-    $resolvePort = ($port !== null) ? (int)$port : ($scheme === 'https' ? 443 : 80);
-    curl_setopt($ch, CURLOPT_RESOLVE, [$host . ':' . $resolvePort . ':' . $ip]);
 
     // 限制下载大小（5MB）
     $maxSize = 5 * 1024 * 1024;
     $data = '';
     $totalSize = 0;
+    $contentTypeOk = true;
+    $responseStatus = 0;
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
+    // 关闭自动跟随重定向：每一跳都在本函数内重新校验后再请求，防止 SSRF 绕过
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (compatible; ImageFetcher/1.0)');
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+
     curl_setopt($ch, CURLOPT_WRITEFUNCTION, function($ch, $chunk) use (&$data, $maxSize, &$totalSize) {
         $chunkLen = strlen($chunk);
         $totalSize += $chunkLen;
@@ -939,19 +1030,17 @@ function fetchRemoteImage($url) {
         return $chunkLen;
     });
 
-    // Content-Type 验证
-    $allowedTypes = [
-        'image/jpeg' => true, 'image/jpg' => true,
-        'image/png' => true, 'image/gif' => true,
-        'image/webp' => true, 'image/bmp' => true,
-        'image/svg+xml' => true, 'image/x-icon' => true,
-    ];
-    $contentTypeOk = true;
-    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($ch, $header) use (&$contentTypeOk, $allowedTypes) {
+    // 仅校验最终 200 响应的 Content-Type（重定向响应不参与校验）
+    curl_setopt($ch, CURLOPT_HEADERFUNCTION, function($ch, $header) use (&$contentTypeOk, &$responseStatus, $allowedTypes) {
         $len = strlen($header);
-        $header = trim($header);
-        if (stripos($header, 'Content-Type:') === 0) {
-            $type = trim(substr($header, 13));
+        $trimmed = trim($header);
+        if (preg_match('#^HTTP/\S+\s+(\d{3})#i', $trimmed, $m)) {
+            $responseStatus = (int)$m[1];
+            $contentTypeOk = ($responseStatus === 200);
+            return $len;
+        }
+        if ($responseStatus === 200 && stripos($trimmed, 'Content-Type:') === 0) {
+            $type = trim(substr($trimmed, 13));
             $type = strtolower(explode(';', $type)[0]);
             if (!isset($allowedTypes[$type])) {
                 $contentTypeOk = false;
@@ -960,12 +1049,65 @@ function fetchRemoteImage($url) {
         return $len;
     });
 
-    $success = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
+    // 手动处理重定向：每跳重新校验目标地址并固定 IP（防止 DNS 重绑定与内网跳转）
+    $currentUrl = $url;
+    $currentResolved = $resolved;
+    $maxRedirects = 3;
+    $httpCode = 0;
+    $error = '';
+    $success = false;
+
+    for ($hop = 0; $hop <= $maxRedirects; $hop++) {
+        $data = '';
+        $totalSize = 0;
+        $contentTypeOk = true;
+        $responseStatus = 0;
+
+        curl_setopt($ch, CURLOPT_URL, $currentUrl);
+        curl_setopt($ch, CURLOPT_RESOLVE, [
+            $currentResolved['host'] . ':' . $currentResolved['port'] . ':' . $currentResolved['ip']
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+
+        if ($response === false || !empty($error)) {
+            $success = false;
+            break;
+        }
+
+        if ($httpCode >= 300 && $httpCode < 400) {
+            // 重定向：解析目标地址并重新校验
+            $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+            if (empty($redirectUrl)) {
+                $success = false;
+                $error = '重定向地址为空';
+                break;
+            }
+            $redirectUrl = resolveRelativeUrl($currentUrl, $redirectUrl);
+            if (!isSafeRemoteUrl($redirectUrl, $currentResolved)) {
+                $success = false;
+                $error = '重定向目标地址不合法';
+                break;
+            }
+            $currentUrl = $redirectUrl;
+            continue; // 进入下一跳
+        }
+
+        if ($httpCode === 200) {
+            $success = true;
+            break;
+        }
+
+        $success = false;
+        $error = 'HTTP ' . $httpCode;
+        break;
+    }
+
     curl_close($ch);
 
-    if ($success === false || !empty($error) || $httpCode !== 200) {
+    if (!$success || !empty($error) || $httpCode !== 200) {
         return false;
     }
 
@@ -992,9 +1134,13 @@ function fetchRemoteImage($url) {
         }
         if (!$isValidImage && strlen($data) >= 200) {
             // 备用：使用 finfo 检测
-            $finfo = new finfo(FILEINFO_MIME_TYPE);
-            $detectedMime = $finfo->buffer($data);
-            if (!isset($allowedTypes[$detectedMime])) {
+            if (class_exists('finfo')) {
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $detectedMime = $finfo->buffer($data);
+                if (!isset($allowedTypes[$detectedMime])) {
+                    return false;
+                }
+            } else {
                 return false;
             }
         } elseif (!$isValidImage) {
@@ -1029,7 +1175,8 @@ function handleImageApiRequest($type, $countType = null) {
         $returnType = 'redirect';
     }
 
-    $cacheTime = isset($_GET['cache']) ? max(0, intval($_GET['cache'])) : 0;
+    // cache 参数钳制上限（最大 30 天），防止超大值导致时间戳溢出
+    $cacheTime = isset($_GET['cache']) ? max(0, min(2592000, intval($_GET['cache']))) : 0;
     $imageUrl = getRandomImageUrl($type);
 
     if ($countType === null) {
@@ -1281,6 +1428,14 @@ function checkUpdateEnvironment() {
         $warnings[] = 'PHP max_execution_time=' . ini_get('max_execution_time') . 's 可能不足，建议设置为 ' . UPDATE_TIMEOUT . 's 或以上';
     }
 
+    // 提示目录防护（.htaccess 仅对 Apache 生效；Nginx 需按 nginx.conf.example 配置）
+    $serverSoftware = strtolower($_SERVER['SERVER_SOFTWARE'] ?? '');
+    if (strpos($serverSoftware, 'nginx') !== false) {
+        $warnings[] = '检测到 Nginx 服务器：请务必按根目录 nginx.conf.example 配置 data/ 与 admin/logs/ 目录拒绝访问，否则敏感文件可被公网下载';
+    } else {
+        $warnings[] = '请确认 data/ 与 admin/logs/ 目录无法通过 Web 访问（Apache 使用自带 .htaccess；Nginx 请参考 nginx.conf.example）';
+    }
+
     return [
         'ok' => empty($errors),
         'errors' => $errors,
@@ -1292,7 +1447,9 @@ function checkUpdateEnvironment() {
 function isPathProtected($relativePath) {
     $protected = unserialize(UPDATE_PROTECTED_PATHS);
     $relativePath = str_replace('\\', '/', $relativePath);
-    $normalized = ltrim($relativePath, './');
+    // 仅去除开头的 ./,避免吞掉 .git/.htaccess 等点前缀路径
+    $normalized = preg_replace('#^\./+#', '', $relativePath);
+    $normalized = ltrim($normalized, '/');
     foreach ($protected as $pattern) {
         if (empty($pattern)) continue;
         if ($normalized === rtrim($pattern, '/') ||

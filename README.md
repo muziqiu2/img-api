@@ -36,6 +36,23 @@
    - `data/update_cache/`「v3.1.0」
 3. 访问项目首页即可使用
 
+### Nginx 部署（重要）
+
+项目自带的 `.htaccess` 防护**仅对 Apache 生效**。若使用 Nginx，必须参考根目录的 `nginx.conf.example` 配置规则，至少确保以下路径不可被 Web 访问（否则 `data/app.db` 数据库与 `data/backups/*.zip` 备份包可被公网直接下载，造成源码与数据泄露）：
+
+```nginx
+# 敏感目录：data/ 与 admin/logs/
+location ~ ^/(data|admin\/logs)/ {
+    deny all;
+    return 403;
+}
+# 压缩包与隐藏文件兜底
+location ~* \.zip$ { deny all; return 403; }
+location ~ /\.     { deny all; return 403; }
+```
+
+部署完成后可访问 `admin/` → 系统更新 → 环境检查，查看是否有目录暴露相关警告。
+
 ### 默认账号
 
 - 用户名：`admin`
@@ -136,7 +153,6 @@ fetch('https://your-domain.com/pc.php?return=json')
 2. **目录保护**：确保`data/`和`admin/logs/`目录无法通过web访问
 3. **HTTPS**：生产环境建议使用HTTPS
 4. **定期备份**：定期备份`data/`目录下的数据文件
-5. **删除重置脚本**：使用完 `reset_config.php` 后请立即删除「v3.0」
 
 ## 安全特性
 
@@ -158,7 +174,7 @@ fetch('https://your-domain.com/pc.php?return=json')
 ├── pe.php               # 移动端专用API
 ├── index.php            # 项目首页
 ├── config.php           # 配置文件和核心函数
-├── reset_config.php     # 重置用户配置脚本（使用后删除）
+├── nginx.conf.example   # Nginx 部署安全配置示例「v3.1.2」
 ├── admin/
 │   ├── index.php        # 登录页面
 │   ├── dashboard.php    # 管理后台
@@ -186,7 +202,7 @@ fetch('https://your-domain.com/pc.php?return=json')
 
 ## 当前版本
 
-v3.1.1
+v3.1.2
 
 ## 许可证
 

@@ -25,6 +25,8 @@ class AppUpdater
     private $backupPath = null;
     private $errors = [];
     private $logs = [];
+    private $warnings = [];
+    private $stripTopDir = false; // 结构探测结果：是否剥离 zip 顶层目录
 
     public function __construct()
     {
@@ -61,6 +63,7 @@ class AppUpdater
                     'current' => $this->currentVersion,
                     'latest' => $cached['tag_name'],
                     'release' => $this->formatReleaseData($cached),
+                    'warnings' => $this->warnings,
                 ];
             }
         }
@@ -97,6 +100,7 @@ class AppUpdater
             'current' => $this->currentVersion,
             'latest' => $this->latestVersion,
             'release' => $this->formatReleaseData($data),
+            'warnings' => $this->warnings,
         ];
     }
 
@@ -205,6 +209,7 @@ class AppUpdater
                 'to_version' => $this->latestVersion,
                 'backup_path' => $this->backupPath,
                 'logs' => $this->logs,
+                'warnings' => $this->warnings,
                 'duration' => $duration,
             ];
 
@@ -216,6 +221,7 @@ class AppUpdater
                 'success' => false,
                 'errors' => $this->errors,
                 'logs' => $this->logs,
+                'warnings' => $this->warnings,
                 'backup_path' => $this->backupPath,
             ];
         } finally {
@@ -351,6 +357,7 @@ class AppUpdater
                 $this->log('SHA1 校验通过');
             } else {
                 $this->log('未在 release notes 中找到显式校验和，跳过哈希校验');
+                $this->warnings[] = '发布说明中未包含 SHA256/SHA1 校验和，本次已跳过哈希校验。建议发布者在 release notes 中补充，以确保更新包完整性。';
             }
         }
 
@@ -426,7 +433,24 @@ class AppUpdater
         }
 
         $this->log('备份完成: ' . $fileCount . ' 个文件，大小 ' . round(filesize($this->backupPath) / 1024, 2) . ' KB');
+        $this->pruneBackups(5);
         return true;
+    }
+
+    // 备份保留策略：仅保留最近 N 份备份，防止磁盘无限占用
+    private function pruneBackups($keep = 5)
+    {
+        $files = glob(UPDATE_BACKUP_DIR . '/backup_*.zip');
+        if ($files === false || count($files) <= $keep) {
+            return;
+        }
+        rsort($files); // 最新的在前
+        $toDelete = array_slice($files, $keep);
+        foreach ($toDelete as $f) {
+            if (@unlink($f)) {
+                $this->log('已清理旧备份: ' . basename($f));
+            }
+        }
     }
 
     // ============================================================
@@ -448,6 +472,9 @@ class AppUpdater
         $totalFiles = $zip->numFiles;
         $extractedCount = 0;
         $skippedCount = 0;
+
+        // 结构探测：判断是否需要剥离 zip 顶层目录（支持任意命名的仓库根目录）
+        $this->detectZipStructure($zip);
 
         // 先扫描所有文件，发现路径穿越则整体失败
         $suspiciousFiles = [];
@@ -533,18 +560,72 @@ class AppUpdater
     }
 
     /**
-     * 去除 GitHub 源码压缩包中的顶层目录（如 img-api-abcdef/）并返回相对项目根的路径
+     * 结构探测：若 zip 顶层恰好只有一个目录且内含项目特征文件（如 config.php/README.md），
+     * 则判定为 GitHub 源码包，统一剥离该顶层目录。支持任意命名的仓库根目录（v3.2.0/、release/ 等）。
+     */
+    private function detectZipStructure($zip)
+    {
+        $topDirs = [];
+        $topFiles = [];
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            if ($stat === false) continue;
+            $name = str_replace('\\', '/', $stat['name']);
+            $name = preg_replace('#^\./+#', '', $name);
+            $name = ltrim($name, '/');
+            if (empty($name)) continue;
+
+            $slash = strpos($name, '/');
+            if ($slash === false) {
+                $topFiles[$name] = true; // 顶层文件
+            } else {
+                $topDirs[substr($name, 0, $slash)] = true;
+            }
+        }
+
+        // 恰好一个顶层目录且没有顶层文件时，检查其内部是否包含项目特征文件
+        if (count($topDirs) === 1 && empty($topFiles)) {
+            $top = array_keys($topDirs)[0];
+            $signatureFiles = ['config.php', 'api.php', 'index.php', 'pc.php', 'pe.php', 'README.md'];
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $stat = $zip->statIndex($i);
+                if ($stat === false) continue;
+                $name = str_replace('\\', '/', $stat['name']);
+                $name = preg_replace('#^\./+#', '', $name);
+                $name = ltrim($name, '/');
+                if (strpos($name, $top . '/') !== 0) continue;
+                $rest = substr($name, strlen($top) + 1);
+                if (in_array($rest, $signatureFiles)) {
+                    $this->stripTopDir = true;
+                    $this->log('检测到源码包根目录: ' . $top . '/，将统一剥离');
+                    return;
+                }
+            }
+        }
+    }
+
+    /**
+     * 去除 GitHub 源码压缩包中的顶层目录并返回相对项目根的路径
      */
     private function normalizeZipEntryPath($entryName)
     {
         $entryName = str_replace('\\', '/', $entryName);
-        $entryName = ltrim($entryName, './');
+        // 仅去除开头的 ./,避免吞掉 .git 等点前缀路径
+        $entryName = preg_replace('#^\./+#', '', $entryName);
+        $entryName = ltrim($entryName, '/');
 
         if (empty($entryName) || substr($entryName, -1) === '/') {
             return null; // 纯目录
         }
 
-        // 去掉第一层目录（GitHub 源码压缩包总是带一个顶层目录，如 repo-sha/）
+        // 结构探测结果：统一剥离唯一顶层目录
+        if ($this->stripTopDir) {
+            $firstSlash = strpos($entryName, '/');
+            return $firstSlash === false ? $entryName : substr($entryName, $firstSlash + 1);
+        }
+
+        // 兼容旧逻辑：仓库名前缀剥壳（如 img-api-abc123/）
         $firstSlash = strpos($entryName, '/');
         if ($firstSlash !== false) {
             $topDir = substr($entryName, 0, $firstSlash);
@@ -714,6 +795,63 @@ class AppUpdater
     /**
      * 使用备份文件回滚到更新前状态
      */
+    /**
+     * 受控恢复备份 zip：逐条目校验路径、跳过受保护路径，默认不覆盖数据库
+     * @param string $zipPath 备份文件路径
+     * @param bool $restoreDatabase 是否同时恢复数据库（默认 false，避免丢失新数据）
+     * @return int 成功恢复的文件数
+     */
+    private function extractZipSafely($zipPath, $restoreDatabase = false)
+    {
+        if (!file_exists($zipPath)) {
+            return 0;
+        }
+        $rootPath = realpath(dirname(__DIR__));
+
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath) !== true) {
+            return 0;
+        }
+
+        $success = 0;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if ($name === false || $name === '') continue;
+            $name = str_replace('\\', '/', $name);
+            if (substr($name, -1) === '/' || empty($name)) continue;
+
+            // 路径穿越防御
+            if (strpos($name, '../') !== false || strpos($name, '..\\') !== false) {
+                continue;
+            }
+            // 仅去除开头的 ./,避免吞掉点前缀路径
+            $clean = preg_replace('#^\./+#', '', $name);
+            $clean = ltrim($clean, '/');
+            if (empty($clean)) continue;
+
+            // 受保护路径（data/、admin/logs/、缓存等）不参与回滚
+            if (isPathProtected($clean)) {
+                continue;
+            }
+            // 默认不恢复数据库，避免回滚后新增的数据丢失
+            if (!$restoreDatabase && $clean === 'data/app.db') {
+                continue;
+            }
+
+            $target = $rootPath . '/' . $clean;
+            $dir = dirname($target);
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            if ($zip->extractTo($dir, [$name])) {
+                $success++;
+            }
+        }
+        $zip->close();
+        return $success;
+    }
+
+    /**
+     * 自动回滚（更新失败时调用）：恢复代码文件，跳过数据库与受保护路径
+     */
     public function rollback()
     {
         $this->log('开始回滚...');
@@ -722,46 +860,22 @@ class AppUpdater
             return false;
         }
 
-        $zip = new ZipArchive();
-        if ($zip->open($this->backupPath) !== true) {
-            $this->errors[] = '无法打开备份文件';
-            return false;
-        }
-
-        $rootPath = realpath(dirname(__DIR__));
-        $success = 0;
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $name = $zip->getNameIndex($i);
-            if (substr($name, -1) === '/' || empty($name)) continue;
-
-            $target = $rootPath . '/' . $name;
-            $dir = dirname($target);
-            if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            if ($zip->extractTo($dir, [$name])) {
-                $success++;
-            }
-        }
-        $zip->close();
-
-        $this->log('回滚完成: 恢复 ' . $success . ' 个文件');
+        $restored = $this->extractZipSafely($this->backupPath, false);
+        $this->log('回滚完成: 恢复 ' . $restored . ' 个文件（跳过数据库与受保护路径）');
         logUpdateAction($this->latestVersion ?? $this->currentVersion, $this->currentVersion, 'rollback', '更新失败，自动回滚', $this->backupPath);
-        return true;
+        return $restored > 0;
     }
 
     /**
-     * 手动回滚：通过指定备份文件路径
+     * 手动回滚：通过指定备份文件路径（受控恢复，不覆盖数据库）
      */
     public static function rollbackFromBackup($backupPath)
     {
-        if (!file_exists($backupPath)) return false;
-        $rootPath = realpath(dirname(__DIR__));
-
-        $zip = new ZipArchive();
-        if ($zip->open($backupPath) !== true) return false;
-
-        $zip->extractTo($rootPath);
-        $zip->close();
-        return true;
+        if (!file_exists($backupPath)) {
+            return false;
+        }
+        $updater = new AppUpdater();
+        return $updater->extractZipSafely($backupPath, false) > 0;
     }
 
     // ============================================================
@@ -786,6 +900,11 @@ class AppUpdater
     public function getLogs()
     {
         return $this->logs;
+    }
+
+    public function getWarnings()
+    {
+        return $this->warnings;
     }
 
     public function getErrors()
@@ -844,14 +963,5 @@ class AppUpdater
             return false;
         }
         return $data;
-    }
-}
-
-// 兼容函数
-if (!function_exists('str_contains_custom')) {
-    function str_contains_custom($haystack, $needle)
-    {
-        if (function_exists('str_contains')) return str_contains($haystack, $needle);
-        return $needle !== '' && strpos($haystack, $needle) !== false;
     }
 }

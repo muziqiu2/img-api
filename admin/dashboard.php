@@ -144,6 +144,13 @@ if ($currentSection === 'management') {
 $stats = getCallCount();
 $adminLogs = getAdminLogs(50);
 $currentUsername = getCurrentUsername();
+
+// 强制修改默认密码：仍在使用默认密码时，除用户设置页外一律强制跳转过去
+$mustChangePassword = isDefaultPassword();
+if ($mustChangePassword && $currentSection !== 'user') {
+    header('Location: dashboard.php?section=user&force_change=1');
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -151,12 +158,10 @@ $currentUsername = getCurrentUsername();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>魔法师API - 管理后台</title>
-    <!-- Google Font -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="../public/css/all.min.css">
     <!-- Theme style -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+    <link rel="stylesheet" href="../public/css/adminlte.min.css">
 </head>
 <body class="hold-transition sidebar-mini layout-fixed">
 <div class="wrapper">
@@ -248,6 +253,14 @@ $currentUsername = getCurrentUsername();
                 <div class="alert alert-<?php echo $messageType === 'error' ? 'danger' : ($messageType === 'warning' ? 'warning' : 'success'); ?> alert-dismissible">
                     <button type="button" class="close" data-dismiss="alert">&times;</button>
                     <?php echo htmlspecialchars($message); ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if ($mustChangePassword): ?>
+                <div class="alert alert-danger alert-dismissible">
+                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                    <i class="icon fas fa-exclamation-triangle"></i>
+                    <strong>安全警告：</strong>当前仍在使用默认密码（123456），系统已禁止使用其他功能，请立即修改密码！
                 </div>
                 <?php endif; ?>
 
@@ -427,6 +440,12 @@ $currentUsername = getCurrentUsername();
                     <div class="card-header">
                         <h3 class="card-title">用户设置</h3>
                     </div>
+                    <?php if ($mustChangePassword): ?>
+                    <div class="alert alert-warning mb-0 rounded-0">
+                        <i class="icon fas fa-exclamation-triangle"></i>
+                        系统检测到您仍在使用默认密码，请立即修改密码后再使用其他功能。
+                    </div>
+                    <?php endif; ?>
                     <div class="card-body">
                         <form method="post" action="?section=user">
                             <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
@@ -625,7 +644,7 @@ $currentUsername = getCurrentUsername();
 <!-- Bootstrap -->
 <script src="../public/js/bootstrap.bundle.min.js"></script>
 <!-- AdminLTE App -->
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+<script src="../public/js/adminlte.min.js"></script>
 <!-- 自定义确认模态框处理 -->
 <script>
 var pendingDeleteUrl = '';

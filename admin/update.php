@@ -26,8 +26,8 @@ if (!IS_LOGGED_IN) {
     exit;
 }
 
-// CSRF 验证（所有非 GET 请求必须验证）
-$csrfToken = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? '';
+// CSRF 验证（仅接受 POST 请求体中的 token，避免 token 出现在 URL 中泄露）
+$csrfToken = $_POST['csrf_token'] ?? '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken($csrfToken)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'CSRF token 验证失败'], JSON_UNESCAPED_UNICODE);
@@ -275,6 +275,7 @@ try {
             echo json_encode(['success' => false, 'error' => '无效的 action 参数'], JSON_UNESCAPED_UNICODE);
     }
 } catch (Exception $e) {
+    @error_log('[img-api] 更新接口异常: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'error' => '服务器错误: ' . $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['success' => false, 'error' => '服务器内部错误，请稍后再试或查看服务器日志'], JSON_UNESCAPED_UNICODE);
 }
