@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.4'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.5'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -120,6 +120,21 @@ function getDb() {
             $pdo = new PDO('sqlite:' . DB_FILE);
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
+            // 并发稳健性配置（仅记录日志，失败不影响连接本身）
+            try {
+                // 写锁等待最多 5 秒，避免高并发写入时立刻抛 "database is locked"
+                $pdo->exec('PRAGMA busy_timeout = 5000');
+                // WAL 日志模式：读写不互斥，显著降低写锁争用。
+                // journal_mode 是持久化设置，首次生效后对后续所有连接均有效。
+                $walMode = $pdo->query('PRAGMA journal_mode = WAL')->fetchColumn();
+                if (strcasecmp((string)$walMode, 'wal') === 0) {
+                    // 仅 WAL 生效时才开启 NORMAL 同步（WAL 下 NORMAL 足以防库损坏且写吞吐更高）
+                    $pdo->exec('PRAGMA synchronous = NORMAL');
+                }
+            } catch (Exception $e) {
+                @error_log('[img-api] 数据库 PRAGMA 配置失败: ' . $e->getMessage());
+            }
         } catch (PDOException $e) {
             @error_log('[img-api] 数据库连接失败: ' . $e->getMessage());
             die('数据库连接失败，请检查服务器配置或查看服务器错误日志');
@@ -137,6 +152,14 @@ function getDb() {
 function initDatabase() {
     global $pdo;
     $db = $pdo;
+
+    // 已初始化标记：跳过重复 DDL，消除每个请求的固定开销（CREATE TABLE 编译与 schema 读锁）。
+    // 数据库文件缺失或被清空时仍会重新初始化，确保重置场景可自愈；
+    // 未来新表结构变更走 update/migrations.php（更新时执行），不受此标记影响。
+    $schemaMarker = DB_FILE . '.schema_ok';
+    if (file_exists($schemaMarker) && file_exists(DB_FILE) && @filesize(DB_FILE) > 0) {
+        return;
+    }
 
     // 用户配置表
     $db->exec("
@@ -236,6 +259,9 @@ function initDatabase() {
         ");
         $stmt->execute([password_hash('123456', PASSWORD_DEFAULT)]);
     }
+
+    // 全部表结构与默认数据就绪后写入标记，后续请求跳过 DDL
+    @file_put_contents($schemaMarker, date('Y-m-d H:i:s'));
 }
 
 // 定义是否在管理区域
@@ -713,23 +739,32 @@ function resolveRelativeUrl($baseUrl, $redirectUrl) {
 
 // ==================== 缓存函数 ====================
 
-function getCachedImageUrls($type) {
-    $cacheFile = CACHE_DIR . "/{$type}_urls.cache";
+// 图片数量缓存文件路径
+// （取代旧版"全量 URL 列表缓存"：列表过大时每请求 json_decode 全量数组，
+//  内存 O(n) 且解析耗时，是高并发下的内存压力来源；数量缓存为 O(1)）
+function imageCountCacheFile($type) {
+    return CACHE_DIR . "/{$type}_count.cache";
+}
+
+function getCachedImageCount($type) {
+    $cacheFile = imageCountCacheFile($type);
     if (file_exists($cacheFile) && time() - filemtime($cacheFile) < CACHE_TTL) {
-        return json_decode(file_get_contents($cacheFile), true);
+        $count = @file_get_contents($cacheFile);
+        return is_numeric($count) ? (int)$count : null;
     }
     return null;
 }
 
-function setCachedImageUrls($type, $urls) {
-    $cacheFile = CACHE_DIR . "/{$type}_urls.cache";
-    file_put_contents($cacheFile, json_encode($urls));
+function setCachedImageCount($type, $count) {
+    @file_put_contents(imageCountCacheFile($type), (string)(int)$count);
 }
 
 function clearCachedImageUrls($type) {
-    $cacheFile = CACHE_DIR . "/{$type}_urls.cache";
-    if (file_exists($cacheFile)) {
-        unlink($cacheFile);
+    // 同时清理旧版全量列表缓存与新版数量缓存，避免升级后残留
+    foreach ([CACHE_DIR . "/{$type}_urls.cache", imageCountCacheFile($type)] as $cacheFile) {
+        if (file_exists($cacheFile)) {
+            @unlink($cacheFile);
+        }
     }
 }
 
@@ -1001,26 +1036,36 @@ function getAdminLogs($limit = 100) {
 // ==================== 图片API函数 ====================
 
 function getRandomImageUrl($type = 'pc') {
-    $validUrls = getCachedImageUrls($type);
-    
-    if ($validUrls === null) {
-        $db = getDb();
-        $stmt = $db->prepare("SELECT url FROM image_urls WHERE type = ?");
-        $stmt->execute([$type]);
-        $validUrls = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        
-        if (empty($validUrls)) {
-            return false;
-        }
-        
-        setCachedImageUrls($type, $validUrls);
+    $db = getDb();
+
+    // 仅缓存数量（O(1) 内存），用随机 OFFSET 取一行，
+    // 避免每次请求读取并 json_decode 全量 URL 列表（内存与解析耗时均为 O(n)）
+    $count = getCachedImageCount($type);
+    if ($count === null) {
+        $count = getImageCount($type);
+        setCachedImageCount($type, $count);
     }
-    
-    if (empty($validUrls)) {
+    if ($count <= 0) {
         return false;
     }
-    
-    return $validUrls[array_rand($validUrls)];
+
+    $stmt = $db->prepare("SELECT url FROM image_urls WHERE type = ? LIMIT 1 OFFSET ?");
+    $stmt->execute([$type, mt_rand(0, $count - 1)]);
+    $url = $stmt->fetchColumn();
+
+    // 并发删除可能导致缓存的计数偏大、OFFSET 越界取不到行：
+    // 按实际计数重试一次并刷新计数缓存
+    if ($url === false) {
+        $count = getImageCount($type);
+        if ($count <= 0) {
+            return false;
+        }
+        setCachedImageCount($type, $count);
+        $stmt->execute([$type, mt_rand(0, $count - 1)]);
+        $url = $stmt->fetchColumn();
+    }
+
+    return $url !== false ? $url : false;
 }
 
 // SSRF防护：安全获取远程图片（每一跳重定向均重新校验，防止重定向绕过防护）
