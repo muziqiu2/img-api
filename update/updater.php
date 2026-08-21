@@ -30,7 +30,9 @@ class AppUpdater
 
     public function __construct()
     {
-        $this->currentVersion = APP_VERSION;
+        // 使用 getAppVersion() 而非 APP_VERSION 常量：优先读取 data/app_version.txt，
+        // 避免更新后 config.php 不可写时新旧版本号不一致、导致误判可更新
+        $this->currentVersion = getAppVersion();
         $this->zipPath = UPDATE_CACHE_DIR . '/release_' . time() . '.zip';
         $this->extractDir = UPDATE_CACHE_DIR . '/extract_' . time();
     }
@@ -135,6 +137,21 @@ class AppUpdater
         $this->log('========== 开始更新流程 ==========');
         $startTime = microtime(true);
 
+        // 并发互斥锁：防止多个更新/回滚请求同时执行导致解压目录、备份与文件替换互相覆盖
+        if (!is_dir(UPDATE_CACHE_DIR)) {
+            @mkdir(UPDATE_CACHE_DIR, 0755, true);
+        }
+        $lockFile = UPDATE_CACHE_DIR . '/update.lock';
+        $lockHandle = @fopen($lockFile, 'c');
+        if ($lockHandle === false || !flock($lockHandle, LOCK_EX | LOCK_NB)) {
+            if (is_resource($lockHandle)) {
+                fclose($lockHandle);
+            }
+            $this->errors[] = '已有更新正在进行，请稍后再试';
+            $this->log('[错误] 已有更新正在进行，请稍后再试');
+            return ['success' => false, 'errors' => $this->errors, 'logs' => $this->logs];
+        }
+
         try {
             // 2.1 环境预检查
             $env = checkUpdateEnvironment();
@@ -225,6 +242,13 @@ class AppUpdater
                 'backup_path' => $this->backupPath,
             ];
         } finally {
+            if (is_resource($lockHandle)) {
+                flock($lockHandle, LOCK_UN);
+                fclose($lockHandle);
+            }
+            if (file_exists($lockFile)) {
+                @unlink($lockFile);
+            }
             $this->cleanup();
         }
     }
@@ -486,8 +510,8 @@ class AppUpdater
             if ($stat === false) continue;
 
             $name = $stat['name'];
-            // 1) 路径穿越检测
-            if (strpos($name, '../') !== false || strpos($name, '..\\') !== false) {
+            // 1) 路径穿越检测（识别任意混合分隔符的 .. 段）
+            if ($this->hasTraversalSegment($name)) {
                 $suspiciousFiles[] = $name;
                 continue;
             }
@@ -523,7 +547,7 @@ class AppUpdater
             if ($stat === false) continue;
 
             $name = $stat['name'];
-            if (strpos($name, '../') !== false || strpos($name, '..\\') !== false) continue;
+            if ($this->hasTraversalSegment($name)) continue;
 
             $cleanName = $this->normalizeZipEntryPath($name);
             if ($cleanName === null) continue;
@@ -625,14 +649,18 @@ class AppUpdater
             return $firstSlash === false ? $entryName : substr($entryName, $firstSlash + 1);
         }
 
-        // 兼容旧逻辑：仓库名前缀剥壳（如 img-api-abc123/）
+        // 兜底剥离：主检测（detectZipStructure）失手时的救命通道。
+        // GitHub 源码包根目录形如 <owner>-<repo>-<hash>（如 muziqiu2-img-api-0116c33），
+        // 该命名始终以 owner 开头而非 repo 名，旧逻辑只匹配 repo 前缀会漏判，导致更新文件被放进同名子目录。
+        // 兜底判定：顶层目录形如 `<owner>-<repo>-<hash>`，且其中包含仓库名，则视为源码包根目录。
         $firstSlash = strpos($entryName, '/');
         if ($firstSlash !== false) {
             $topDir = substr($entryName, 0, $firstSlash);
-            // 仅当顶层目录以仓库名开头且带有后缀（如 img-api-abc123）时视为包根目录去除，
-            // 避免误剥更新包中真实存在的顶层目录（如 assets/、v3.2.0/ 等）
+            $topLower = strtolower($topDir);
             $repoLower = strtolower(GITHUB_REPO_NAME);
-            if (strlen($topDir) > strlen(GITHUB_REPO_NAME) && str_starts_with_custom(strtolower($topDir), $repoLower)) {
+            $looksLikeSourceHash = $repoLower !== '' && strpos($topLower, $repoLower) !== false
+                && (bool)preg_match('/^[\w.-]+-[0-9a-f]{6,8}$/i', $topDir);
+            if ($looksLikeSourceHash) {
                 return substr($entryName, $firstSlash + 1);
             }
         }
@@ -754,11 +782,14 @@ class AppUpdater
 
     private function finalizeUpdate()
     {
+        // 统一去掉 v 前缀，避免 config.php 中写入 'v3.1.4' 这类与既有 '3.1.3' 风格不一致的版本号
+        $cleanVersion = ltrim((string)$this->latestVersion, 'v');
+
         // 更新版本文件
-        setAppVersion($this->latestVersion);
+        setAppVersion($cleanVersion);
 
         // 更新 config.php 中的 APP_VERSION（如果可行）
-        $this->updateVersionInConfig($this->latestVersion);
+        $this->updateVersionInConfig($cleanVersion);
 
         // 清理所有缓存
         $this->cleanup();
@@ -820,8 +851,8 @@ class AppUpdater
             $name = str_replace('\\', '/', $name);
             if (substr($name, -1) === '/' || empty($name)) continue;
 
-            // 路径穿越防御
-            if (strpos($name, '../') !== false || strpos($name, '..\\') !== false) {
+            // 路径穿越防御（识别任意混合分隔符的 .. 段）
+            if ($this->hasTraversalSegment($name)) {
                 continue;
             }
             // 仅去除开头的 ./,避免吞掉点前缀路径
@@ -920,6 +951,20 @@ class AppUpdater
     private function log($msg)
     {
         $this->logs[] = '[' . date('H:i:s') . '] ' . $msg;
+    }
+
+    /**
+     * 检测路径是否包含穿越段（识别混合分隔符，如 foo/..\bar）
+     */
+    private function hasTraversalSegment($path)
+    {
+        $normalized = str_replace('\\', '/', (string)$path);
+        foreach (explode('/', $normalized) as $segment) {
+            if ($segment === '..') {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function httpGet($url)
