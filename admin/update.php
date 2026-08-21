@@ -12,6 +12,8 @@
  *   env      —— 检查当前环境是否满足更新要求
  *   settings —— 获取应用设置
  *   save_token —— 保存 GitHub Token
+ *   get_site_settings —— 获取网站展示设置
+ *   save_site_settings —— 保存网站展示设置
  */
 
 require_once dirname(__DIR__) . '/config.php';
@@ -40,7 +42,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : ($_POST['action'] ?? '');
 // 频率限制
 // 对于只读操作（check、backups、logs、env、settings），使用更宽松的限制（30次/分钟）
 // 对于写操作（update、rollback、save_token、delete_backup），使用严格的限制（10次/分钟）
-$readonlyActions = ['check', 'backups', 'logs', 'env', 'settings'];
+$readonlyActions = ['check', 'backups', 'logs', 'env', 'settings', 'get_site_settings'];
 $isReadOnly = in_array($action, $readonlyActions);
 
 if ($isReadOnly) {
@@ -265,6 +267,37 @@ try {
                 http_response_code(500);
                 echo json_encode(['success' => false, 'error' => '保存失败'], JSON_UNESCAPED_UNICODE);
             }
+            break;
+
+        // ============================================
+        // 9) 获取网站展示设置
+        // ============================================
+        case 'get_site_settings':
+            echo json_encode(array_merge(['success' => true], getSiteSettings()), JSON_UNESCAPED_UNICODE);
+            break;
+
+        // ============================================
+        // 10) 保存网站展示设置
+        // ============================================
+        case 'save_site_settings':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                http_response_code(405);
+                echo json_encode(['success' => false, 'error' => '仅允许 POST 请求'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+
+            $fields = ['site_title', 'site_name', 'site_lead', 'site_copyright'];
+            foreach ($fields as $field) {
+                $value = isset($_POST[$field]) ? trim($_POST[$field]) : '';
+                if ($value !== '') {
+                    setAppSetting($field, $value);
+                }
+            }
+            // 备案号允许为空，直接保存（空值表示不展示）
+            setAppSetting('site_icp', isset($_POST['site_icp']) ? trim($_POST['site_icp']) : '');
+
+            logAdminAction('更新了网站展示设置');
+            echo json_encode(['success' => true, 'message' => '网站设置已保存'], JSON_UNESCAPED_UNICODE);
             break;
 
         // ============================================
