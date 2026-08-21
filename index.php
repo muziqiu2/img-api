@@ -8,6 +8,11 @@ $site = getSiteSettings();
 $appVersion = ltrim(getAppVersion(), 'v');
 $repoUrl = 'https://github.com/' . GITHUB_REPO_OWNER . '/' . GITHUB_REPO_NAME;
 
+// 统计数据只查询一次并在全页复用：
+// getCallCount/getTotalCalls 每次调用都会合并统计缓冲（SQLite 写）并做归档检查，
+// 重复调用既是重复开销，也会让"文件缓冲减少写锁"的设计在高频访问下失效
+$stats = getCallCount();
+
 // 安全主机名（去除危险字符，防止Host头注入攻击）
 $safeHost = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^a-zA-Z0-9\.\-:]/', '', $_SERVER['HTTP_HOST']) : 'example.com';
 $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
@@ -285,7 +290,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
             <div class="col-md-4 mb-3">
                 <div class="stat-card shadow-sm">
                     <p class="stat-label">总调用次数</p>
-                    <div class="stat-value"><?php echo number_format(getTotalCalls()); ?></div>
+                    <div class="stat-value"><?php echo number_format($stats['total']); ?></div>
                 </div>
             </div>
             <div class="col-md-4 mb-3">
@@ -335,7 +340,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                             <i class="fas fa-copy"></i> 复制
                         </button>
                     </div>
-                    <p class="text-muted small mt-1">今日调用: <?php echo getCallCount()['daily'][date('Y-m-d')]['pc'] ?? 0; ?></p>
+                    <p class="text-muted small mt-1">今日调用: <?php echo $stats['daily'][date('Y-m-d')]['pc'] ?? 0; ?></p>
                 </div>
                 <div class="col-md-6 mb-3">
                     <h5>移动端接口</h5>
@@ -347,7 +352,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                             <i class="fas fa-copy"></i> 复制
                         </button>
                     </div>
-                    <p class="text-muted small mt-1">今日调用: <?php echo getCallCount()['daily'][date('Y-m-d')]['pe'] ?? 0; ?></p>
+                    <p class="text-muted small mt-1">今日调用: <?php echo $stats['daily'][date('Y-m-d')]['pe'] ?? 0; ?></p>
                 </div>
             </div>
 
@@ -527,7 +532,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
             });
 
             // 调用趋势图表
-            const countData = <?php echo json_encode(getCallCount()); ?>;
+            const countData = <?php echo json_encode($stats); ?>;
             const dailyData = countData.daily || {};
             
             // 获取最近30天的日期

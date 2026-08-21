@@ -1,6 +1,10 @@
 # 数据库文件
 data/*.db
 data/*.db-journal
+# SQLite WAL 模式运行时文件与数据库初始化标记
+data/*.db-wal
+data/*.db-shm
+data/*.db.schema_ok
 
 # 缓存目录（包含 .cache 文件），每次版本更新自动重建
 data/cache/

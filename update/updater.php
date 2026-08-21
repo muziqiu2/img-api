@@ -428,6 +428,11 @@ class AppUpdater
         );
 
         $fileCount = 0;
+        // 不可压缩的媒体/字体二进制：打包时改用 CM_STORE（仅存储不压缩）。
+        // DEFLATE 对这类文件几乎压不动，却消耗大量 CPU——这是部署更新时 CPU 峰值的主要来源。
+        $storeOnlyExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svgz',
+                          'woff', 'woff2', 'ttf', 'otf', 'eot', 'zip', 'gz'];
+        $canSetCompression = method_exists('ZipArchive', 'setCompressionName');
         foreach ($files as $file) {
             if ($file->isDir()) continue;
 
@@ -451,11 +456,22 @@ class AppUpdater
             if (str_starts_with_custom($relativePath, 'update/') && basename($realPath) === 'release.zip') continue;
 
             $zip->addFile($realPath, $relativePath);
+            // 不可压缩扩展名改用 CM_STORE，避免 DEFLATE 白耗 CPU（PHP 7.4 无该 API 时保持默认行为）
+            if ($canSetCompression
+                && in_array(strtolower(pathinfo($relativePath, PATHINFO_EXTENSION)), $storeOnlyExts, true)) {
+                $zip->setCompressionName($relativePath, ZipArchive::CM_STORE);
+            }
             $fileCount++;
         }
 
         // 同时备份数据库文件（单独记录）
         if (file_exists(DB_FILE)) {
+            // 启用 WAL 时，先执行 checkpoint 把 -wal 中的事务合并回主库，确保备份的是最新一致快照
+            try {
+                getDb()->query('PRAGMA wal_checkpoint(TRUNCATE)')->fetchAll();
+            } catch (Exception $e) {
+                // checkpoint 失败不影响备份主流程
+            }
             $zip->addFile(DB_FILE, 'data/app.db');
             $fileCount++;
         }
@@ -882,8 +898,16 @@ class AppUpdater
             1
         );
         if ($newContent !== null && $newContent !== $content) {
-            file_put_contents($configPath, $newContent);
-            $this->log('已更新 config.php 中的版本号为 ' . $newVersion);
+            // 原子写入：先写临时文件再 rename，避免写入中途进程被杀导致 config.php 损坏
+            $tmpPath = $configPath . '.tmp_' . uniqid();
+            if (@file_put_contents($tmpPath, $newContent) !== false) {
+                if (@rename($tmpPath, $configPath)) {
+                    $this->log('已更新 config.php 中的版本号为 ' . $newVersion);
+                } else {
+                    @unlink($tmpPath);
+                    $this->log('config.php 版本号替换失败（rename 失败）');
+                }
+            }
         }
     }
 
@@ -940,7 +964,13 @@ class AppUpdater
             $target = $rootPath . '/' . $clean;
             $dir = dirname($target);
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            if ($zip->extractTo($dir, [$name])) {
+
+            // 注意：不能使用 extractTo($dir, [$name]) —— extractTo 会保留 zip 内部路径，
+            // 子目录条目（如 admin/dashboard.php）会被展开到 $dir/admin/dashboard.php，
+            // 与 $dir 已含的目录层级叠加后变成 admin/admin/dashboard.php（双重嵌套），
+            // 导致回滚时子目录文件全部恢复到错误位置。改为直接读取条目内容写入目标路径。
+            $content = $zip->getFromIndex($i);
+            if ($content !== false && @file_put_contents($target, $content) !== false) {
                 $success++;
             }
         }

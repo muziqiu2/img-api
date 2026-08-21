@@ -389,11 +389,34 @@ if ($mustChangePassword && $currentSection !== 'user') {
                             <?php if ($currentPage > 1): ?>
                             <li class="page-item"><a class="page-link" href="?section=management&type=<?php echo $currentType; ?>&page=<?php echo $currentPage - 1; ?>">&laquo;</a></li>
                             <?php endif; ?>
-                            <?php for ($i = 1; $i <= $totalPages; $i++): ?>
-                            <li class="page-item <?php echo $i == $currentPage ? 'active' : ''; ?>">
-                                <a class="page-link" href="?section=management&type=<?php echo $currentType; ?>&page=<?php echo $i; ?>"><?php echo $i; ?></a>
-                            </li>
-                            <?php endfor; ?>
+                            <?php
+                            // 窗口式分页：仅渲染首页、当前页附近与末页（含省略号），
+                            // 避免图片量大时渲染数千个页码节点导致页面卡顿
+                            $pageItems = [];
+                            if ($totalPages <= 7) {
+                                $pageItems = range(1, $totalPages);
+                            } else {
+                                $near = range(max(1, $currentPage - 2), min($totalPages, $currentPage + 2));
+                                $windowPages = array_values(array_unique(array_merge([1], $near, [$totalPages])));
+                                $prev = 0;
+                                foreach ($windowPages as $p) {
+                                    if ($prev && $p - $prev > 1) {
+                                        $pageItems[] = '...';
+                                    }
+                                    $pageItems[] = $p;
+                                    $prev = $p;
+                                }
+                            }
+                            ?>
+                            <?php foreach ($pageItems as $item): ?>
+                                <?php if ($item === '...'): ?>
+                                <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                                <?php else: ?>
+                                <li class="page-item <?php echo $item == $currentPage ? 'active' : ''; ?>">
+                                    <a class="page-link" href="?section=management&type=<?php echo $currentType; ?>&page=<?php echo $item; ?>"><?php echo $item; ?></a>
+                                </li>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
                             <?php if ($currentPage < $totalPages): ?>
                             <li class="page-item"><a class="page-link" href="?section=management&type=<?php echo $currentType; ?>&page=<?php echo $currentPage + 1; ?>">&raquo;</a></li>
                             <?php endif; ?>
