@@ -506,7 +506,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                 <?php if (!empty($site['site_icp'])): ?>
                 | <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" class="text-muted"><?php echo htmlspecialchars($site['site_icp'], ENT_QUOTES, 'UTF-8'); ?></a>
                 <?php endif; ?>
-                | <a href="<?php echo htmlspecialchars($repoUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener" class="text-muted">v<?php echo htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8'); ?></a>
+                | <a href="<?php echo htmlspecialchars($repoUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener" class="text-muted" style="white-space:nowrap;">v<?php echo htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8'); ?></a>
             </p>
         </div>
     </footer>
