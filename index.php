@@ -4,6 +4,10 @@ require_once 'config.php';
 // 网站展示设置（前台文案，后台可修改）
 $site = getSiteSettings();
 
+// 当前版本号与项目仓库地址（版本号随更新自动变化）
+$appVersion = ltrim(getAppVersion(), 'v');
+$repoUrl = 'https://github.com/' . GITHUB_REPO_OWNER . '/' . GITHUB_REPO_NAME;
+
 // 安全主机名（去除危险字符，防止Host头注入攻击）
 $safeHost = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^a-zA-Z0-9\.\-:]/', '', $_SERVER['HTTP_HOST']) : 'example.com';
 $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
@@ -502,6 +506,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                 <?php if (!empty($site['site_icp'])): ?>
                 | <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" class="text-muted"><?php echo htmlspecialchars($site['site_icp'], ENT_QUOTES, 'UTF-8'); ?></a>
                 <?php endif; ?>
+                | <a href="<?php echo htmlspecialchars($repoUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener" class="text-muted" style="white-space:nowrap;">v<?php echo htmlspecialchars($appVersion, ENT_QUOTES, 'UTF-8'); ?></a>
             </p>
         </div>
     </footer>

@@ -213,8 +213,20 @@ class AppUpdater
                 throw new Exception('数据库迁移失败: ' . implode('；', $migrateResult['messages']));
             }
 
-            // 2.9 完成
-            $this->finalizeUpdate();
+            // 2.9 完成（finalizeUpdate 会同步写入版本号并做最终校验）
+            if (!$this->finalizeUpdate()) {
+                // 版本号未能记录，说明更新并未完整生效，必须按失败返回
+                // （代码文件已正确替换，不回滚以免丢失新代码，但绝不误报成功）
+                $this->log('[错误] 版本号更新失败，请检查 data/app_version.txt 写入权限');
+                logUpdateAction($this->currentVersion, $this->latestVersion, 'failed', '版本号更新失败：data/app_version.txt 不可写', $this->backupPath);
+                return [
+                    'success' => false,
+                    'errors' => ['版本号更新失败：data/app_version.txt 不可写'],
+                    'logs' => $this->logs,
+                    'warnings' => $this->warnings,
+                    'backup_path' => $this->backupPath,
+                ];
+            }
             $duration = round(microtime(true) - $startTime, 2);
             $this->log('========== 更新完成 (耗时 ' . $duration . 's) ==========');
 
@@ -542,6 +554,7 @@ class AppUpdater
         }
 
         // 开始实际解压
+        $extractFailures = 0;
         for ($i = 0; $i < $totalFiles; $i++) {
             $stat = $zip->statIndex($i);
             if ($stat === false) continue;
@@ -562,21 +575,51 @@ class AppUpdater
 
             $destPath = $this->extractDir . '/' . $cleanName;
             $destDir = dirname($destPath);
-            if (!is_dir($destDir)) {
-                @mkdir($destDir, 0755, true);
+            if (!is_dir($destDir) && !@mkdir($destDir, 0755, true)) {
+                $extractFailures++;
+                continue;
             }
 
             $content = $zip->getFromIndex($i);
-            if ($content !== false) {
-                file_put_contents($destPath, $content);
+            if ($content === false) {
+                $extractFailures++;
+                continue;
+            }
+
+            if (file_put_contents($destPath, $content) === false) {
+                $extractFailures++;
+                continue;
             }
         }
 
         $zip->close();
+
+        // 解压过程若有失败，中止更新（由 doUpdate 回滚），避免缺失文件被当作"更新成功"
+        if ($extractFailures > 0) {
+            $this->errors[] = '解压失败 ' . $extractFailures . ' 个文件，更新已中止';
+            return false;
+        }
+
         $this->log('扫描/解压完成: ' . $extractedCount . ' 个文件，跳过 ' . $skippedCount . ' 个（受保护/不允许）');
 
         if ($extractedCount === 0) {
             $this->errors[] = '更新包中没有可应用的文件';
+            return false;
+        }
+
+        // 结构校验：更新包根目录必须包含项目入口文件。
+        // 若顶层目录剥离失败，文件会被解压到子目录而根文件保持不变，
+        // 此时替换流程依然"成功"，但实际代码并未更新——这正是历史"假成功"的根因。
+        $signatureFiles = ['config.php', 'index.php', 'api.php', 'pc.php', 'pe.php'];
+        $hasSignature = false;
+        foreach ($signatureFiles as $sf) {
+            if (file_exists($this->extractDir . '/' . $sf)) {
+                $hasSignature = true;
+                break;
+            }
+        }
+        if (!$hasSignature) {
+            $this->errors[] = '更新包结构异常：包根目录未发现项目入口文件，顶层目录剥离可能失败，更新已中止';
             return false;
         }
 
@@ -688,7 +731,7 @@ class AppUpdater
 
         $replaced = 0;
         $added = 0;
-        $errors = [];
+        $failed = [];
 
         foreach ($files as $file) {
             if ($file->isDir()) continue;
@@ -709,7 +752,7 @@ class AppUpdater
 
             if (!is_dir($targetDir)) {
                 if (!@mkdir($targetDir, 0755, true)) {
-                    $errors[] = '无法创建目录: ' . $relativePath;
+                    $failed[] = '无法创建目录: ' . $relativePath;
                     continue;
                 }
             }
@@ -719,18 +762,37 @@ class AppUpdater
             // 原子替换：先写入 .tmp 再 rename
             $tmpPath = $targetPath . '.tmp_' . uniqid();
             if (!@copy($realPath, $tmpPath)) {
-                $errors[] = '写入失败: ' . $relativePath;
+                $failed[] = '写入失败: ' . $relativePath;
                 continue;
             }
 
             if (!@rename($tmpPath, $targetPath)) {
                 @unlink($tmpPath);
-                $errors[] = '替换失败: ' . $relativePath;
+                $failed[] = '替换失败: ' . $relativePath;
                 continue;
             }
 
             @chmod($targetPath, 0644);
+
+            // 替换后校验：确认目标文件确实写入成功且内容与更新包一致
+            // （避免"假成功"：文件未真正替换却继续后续流程、更新版本号）
+            if (!file_exists($targetPath)
+                || @filesize($targetPath) !== @filesize($realPath)
+                || md5_file($targetPath) !== md5_file($realPath)) {
+                $failed[] = '替换后校验不一致: ' . $relativePath;
+                continue;
+            }
+
             if ($isNew) $added++; else $replaced++;
+        }
+
+        // 只要有文件失败，整体视为失败，交由 doUpdate 触发回滚，绝不进入"成功"分支
+        if (!empty($failed)) {
+            foreach ($failed as $f) {
+                $this->errors[] = $f;
+            }
+            $this->log('[错误] 文件替换失败: ' . count($failed) . ' 个文件');
+            return false;
         }
 
         if ($replaced === 0 && $added === 0) {
@@ -739,10 +801,6 @@ class AppUpdater
         }
 
         $this->log('文件更新完成: 替换 ' . $replaced . ' 个，新增 ' . $added . ' 个');
-        if (!empty($errors)) {
-            $this->log('[部分失败] ' . count($errors) . ' 个文件: ' . implode('；', array_slice($errors, 0, 3)));
-        }
-
         return true;
     }
 
@@ -786,14 +844,24 @@ class AppUpdater
         $cleanVersion = ltrim((string)$this->latestVersion, 'v');
 
         // 更新版本文件
-        setAppVersion($cleanVersion);
+        if (!setAppVersion($cleanVersion)) {
+            $this->errors[] = '写入版本文件失败: ' . APP_VERSION_FILE;
+            return false;
+        }
 
         // 更新 config.php 中的 APP_VERSION（如果可行）
         $this->updateVersionInConfig($cleanVersion);
 
+        // 最终校验：确认版本号确实已生效（防止 setAppVersion 静默失败或文件未刷新）
+        if (compareVersions(getAppVersion(), $cleanVersion) !== 0) {
+            $this->errors[] = '版本号校验失败：当前版本为 ' . getAppVersion() . '，期望 ' . $cleanVersion;
+            return false;
+        }
+
         // 清理所有缓存
         $this->cleanup();
         clearUpdateCheckCache();
+        return true;
     }
 
     /**
