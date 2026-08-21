@@ -212,6 +212,12 @@ if ($mustChangePassword && $currentSection !== 'user') {
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="?section=site" class="nav-link <?php echo $currentSection === 'site' ? 'active' : ''; ?>">
+                            <i class="nav-icon fas fa-globe"></i>
+                            <p>网站设置</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="?section=update" class="nav-link <?php echo $currentSection === 'update' ? 'active' : ''; ?>">
                             <i class="nav-icon fas fa-sync-alt"></i>
                             <p>系统更新</p>
@@ -239,6 +245,7 @@ if ($mustChangePassword && $currentSection !== 'user') {
                             if ($currentSection === 'management') echo '图片管理';
                             elseif ($currentSection === 'logs') echo '操作日志';
                             elseif ($currentSection === 'user') echo '用户设置';
+                            elseif ($currentSection === 'site') echo '网站设置';
                             elseif ($currentSection === 'update') echo '系统更新';
                             ?>
                         </h1>
@@ -467,6 +474,47 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="再次输入新密码">
                             </div>
                             <button type="submit" name="update_user" class="btn btn-primary">
+                                <i class="fas fa-save"></i> 保存设置
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <?php elseif ($currentSection === 'site'): ?>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">网站设置</h3>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-3">配置前台首页展示的文字内容。默认值即界面当前展示的内容，留空字段将保持默认。</p>
+                        <form id="siteSettingsForm">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
+                            <div class="form-group">
+                                <label for="site_title">网页标题</label>
+                                <input type="text" class="form-control" id="site_title" name="site_title" placeholder="浏览器标签页显示的名称" maxlength="100">
+                                <small class="form-text text-muted">显示在浏览器标签页的 title 名称</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="site_name">网站名称</label>
+                                <input type="text" class="form-control" id="site_name" name="site_name" placeholder="首页顶部大标题" maxlength="100">
+                                <small class="form-text text-muted">首页顶部大标题展示的网站名称</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="site_lead">副标题</label>
+                                <input type="text" class="form-control" id="site_lead" name="site_lead" placeholder="首页顶部的描述文字" maxlength="200">
+                                <small class="form-text text-muted">首页顶部大标题下方的描述文字</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="site_copyright">版权文字</label>
+                                <input type="text" class="form-control" id="site_copyright" name="site_copyright" placeholder="底部版权文字（链接到本项目仓库）" maxlength="200">
+                                <small class="form-text text-muted">底部版权文字，默认链接到本项目 GitHub 仓库</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="site_icp">ICP 备案号</label>
+                                <input type="text" class="form-control" id="site_icp" name="site_icp" placeholder="如：粤ICP备xxxxxxxx号（可留空不展示）" maxlength="100">
+                                <small class="form-text text-muted">底部展示的备案号，链接到工信部网站。留空则不展示备案信息</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> 保存设置
                             </button>
                         </form>
@@ -1124,8 +1172,65 @@ document.addEventListener('DOMContentLoaded', function() {
         loadBackupList();
         loadUpdateHistory();
         loadGithubToken();
+    } else if ('<?php echo $currentSection; ?>' === 'site') {
+        loadSiteSettings();
     }
 });
+
+// ============================================
+// 网站设置：加载与保存
+// ============================================
+function loadSiteSettings() {
+    fetch('update.php?action=get_site_settings', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            document.getElementById('site_title').value = data.site_title || '';
+            document.getElementById('site_name').value = data.site_name || '';
+            document.getElementById('site_lead').value = data.site_lead || '';
+            document.getElementById('site_copyright').value = data.site_copyright || '';
+            document.getElementById('site_icp').value = data.site_icp || '';
+        }
+    })
+    .catch(function() {});
+}
+
+var siteSettingsForm = document.getElementById('siteSettingsForm');
+if (siteSettingsForm) {
+    siteSettingsForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var formData = new FormData(this);
+    formData.append('action', 'save_site_settings');
+    formData.append('csrf_token', updateCsrfToken);
+
+    var submitBtn = this.querySelector('button[type="submit"]');
+    var originalHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...';
+
+    fetch('update.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            alert(data.message);
+        } else {
+            alert('保存失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(function(err) {
+        alert('请求失败: ' + err);
+    })
+    .finally(function() {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalHtml;
+    });
+});
+}
 
 // ============================================
 // jQuery 模态框事件绑定

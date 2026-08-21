@@ -1,6 +1,9 @@
 <?php
 require_once 'config.php';
 
+// 网站展示设置（前台文案，后台可修改）
+$site = getSiteSettings();
+
 // 安全主机名（去除危险字符，防止Host头注入攻击）
 $safeHost = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^a-zA-Z0-9\.\-:]/', '', $_SERVER['HTTP_HOST']) : 'example.com';
 $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
@@ -10,7 +13,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>魔法师随机图片API</title>
+    <title><?php echo htmlspecialchars($site['site_title'], ENT_QUOTES, 'UTF-8'); ?></title>
     <meta name="keywords" content="随机图片,二次元API,动漫壁纸,图片接口">
     <meta name="description" content="提供高质量随机二次元图片API服务，支持PC/移动端自适应">
     
@@ -265,8 +268,8 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
 
     <header class="header text-center">
         <div class="container">
-            <h1 class="display-4 mb-3"><i class="fas fa-magic me-2"></i>魔法师随机图片API</h1>
-            <p class="lead">免费提供高质量随机二次元图片API服务</p>
+            <h1 class="display-4 mb-3"><i class="fas fa-magic me-2"></i><?php echo htmlspecialchars($site['site_name'], ENT_QUOTES, 'UTF-8'); ?></h1>
+            <p class="lead"><?php echo htmlspecialchars($site['site_lead'], ENT_QUOTES, 'UTF-8'); ?></p>
             <a href="admin/" class="admin-link btn btn-light btn-sm">
                 <i class="fas fa-cog"></i> 管理后台
             </a>
@@ -494,7 +497,12 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
 
     <footer>
         <div class="container text-center">
-            <p class="mb-0 text-muted">© <?php echo date('Y'); ?> 魔法师随机图片API | 免费二次元图片接口服务</p>
+            <p class="mb-0 text-muted">
+                © <?php echo date('Y'); ?> <?php echo htmlspecialchars($site['site_copyright'], ENT_QUOTES, 'UTF-8'); ?>
+                <?php if (!empty($site['site_icp'])): ?>
+                | <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener" class="text-muted"><?php echo htmlspecialchars($site['site_icp'], ENT_QUOTES, 'UTF-8'); ?></a>
+                <?php endif; ?>
+            </p>
         </div>
     </footer>
 

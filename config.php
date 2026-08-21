@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.2'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.3'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -399,6 +399,22 @@ function deleteAppSetting($key) {
     return $stmt->execute([$key]);
 }
 
+// 获取网站展示设置（前台首页用），未设置时返回默认值
+function getSiteSettings() {
+    $defaults = [
+        'site_title'     => '魔法师随机图片API',
+        'site_name'      => '魔法师随机图片API',
+        'site_lead'      => '免费提供高质量随机二次元图片API服务',
+        'site_copyright' => '魔法师随机图片API',
+        'site_icp'       => '',
+    ];
+    $settings = [];
+    foreach ($defaults as $key => $default) {
+        $settings[$key] = getAppSetting($key, $default);
+    }
+    return $settings;
+}
+
 // 获取 GitHub Token（优先从数据库获取，否则使用配置文件）
 function getGithubToken() {
     $token = getAppSetting('github_token', '');
@@ -615,9 +631,16 @@ function isSafeRemoteUrl($url, &$resolved = null) {
     }
 
     // 解析 IP 并禁止内网/保留地址
-    $ip = gethostbyname($host);
-    if ($ip === $host || empty($ip)) {
-        return false;
+    // 若 host 本身就是 IP 字面量，直接用它校验；否则通过 DNS 解析域名
+    $rawIp = filter_var($host, FILTER_VALIDATE_IP);
+    if ($rawIp !== false) {
+        $ip = $rawIp;
+    } else {
+        $ip = gethostbyname($host);
+        // gethostbyname 解析失败（含域名无法解析、仅 IPv6 地址等情况）时返回原 host
+        if ($ip === $host || empty($ip)) {
+            return false;
+        }
     }
 
     $forbiddenPatterns = [
@@ -804,6 +827,18 @@ function flushStatsBuffer($date = null) {
     @unlink($file);
 }
 
+// 读取统计前合并所有残留的统计缓冲（含历史日期）。
+// 若某天有调用但之后一直无人触发统计读取，缓冲文件会残留，此处兜底合并，避免数据永久丢失。
+function flushAllStatsBuffers() {
+    $files = glob(CACHE_DIR . '/call_stats_*.json');
+    if ($files === false) return;
+    foreach ($files as $file) {
+        $date = str_replace('call_stats_', '', basename($file, '.json'));
+        if ($date === '' || $date === '__history__') continue;
+        flushStatsBuffer($date);
+    }
+}
+
 // 归档过期统计：每日明细保留 365 天，总量累加到 __history__ 行永久保留
 function archiveOldCallStats() {
     // 每天只归档一次
@@ -882,8 +917,8 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
 }
 
 function getCallCount() {
-    // 读取前先合并当日缓冲并归档过期明细
-    flushStatsBuffer();
+    // 读取前先合并当日及所有残留缓冲并归档过期明细
+    flushAllStatsBuffers();
     archiveOldCallStats();
 
     $db = getDb();
@@ -928,8 +963,8 @@ function getCallCount() {
 }
 
 function getTotalCalls() {
-    // 读取前先合并当日缓冲
-    flushStatsBuffer();
+    // 读取前先合并当日及所有残留缓冲
+    flushAllStatsBuffers();
     archiveOldCallStats();
 
     $db = getDb();
