@@ -54,6 +54,29 @@ location ~ /\.     { deny all; return 403; }
 
 部署完成后可访问 `admin/` → 系统更新 → 环境检查，查看是否有目录暴露相关警告。
 
+### Docker 部署（可选）
+
+支持 Docker 一键部署，镜像构建于 GitHub Container Registry（`ghcr.io/muziqiu2/img-api`），**首次启动自动从 GitHub Releases 拉取最新源码**，内置一键更新系统照常可用。
+
+> 注：Docker 相关文件（`docker/`、`docker-compose.yml`、`.github/`）保留在仓库中供开发和镜像构建使用，但**不包含在发行版压缩包内**（通过 `.gitattributes` 排除），非 Docker 用户下载发行版不会看到多余文件。
+
+1. 获取编排文件（二选一）：
+   ```bash
+   # 方式一：从仓库下载
+   curl -O https://raw.githubusercontent.com/muziqiu2/img-api/main/docker-compose.yml
+   # 方式二：克隆仓库（含全部 Docker 文件）
+   git clone https://github.com/muziqiu2/img-api.git && cd img-api
+   ```
+2. 启动：
+   ```bash
+   docker compose up -d
+   ```
+3. 访问 `http://服务器IP:8080`，默认账号 `admin` / `123456`
+
+- **数据持久化**：代码、数据库、备份全部保存在挂载目录 `./www/`，容器删除不丢数据
+- **日常更新**：登录后台 `admin/` → 系统更新 → 一键更新（备份/回滚功能保留）
+- **环境升级**：发新版本后 `docker compose pull && docker compose up -d`
+
 ### 默认账号
 
 - 用户名：`admin`
@@ -207,4 +230,6 @@ v3.1.5
 
 ## 许可证
 
-本项目仅供学习和个人使用。
+本项目采用 [MIT License](LICENSE) 开源协议。
+
+允许自由使用、修改、商用与再分发，仅需保留版权声明。详见 [LICENSE](LICENSE) 文件。

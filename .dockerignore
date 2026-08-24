@@ -1,0 +1,9 @@
+# Docker 构建上下文忽略（镜像不打包业务代码，运行时自动拉取）
+.git
+.gitignore
+data
+admin/logs
+*.md
+.dockerignore
+docker-compose.yml
+www
