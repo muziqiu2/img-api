@@ -414,25 +414,16 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="heading2">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse2">
-                                返回JSON数据
+                                图片访问模式
                             </button>
                         </h2>
                         <div id="collapse2" class="accordion-collapse collapse" data-bs-parent="#examplesAccordion">
                             <div class="accordion-body">
-                                <div class="api-link-container mb-2">
-                                    <div class="api-link">
-                                        <code>https://<?php echo $safeHost; ?>/pe.php?return=json</code>
-                                    </div>
-                                    <button class="copy-btn" data-clipboard-text="https://<?php echo $safeHost; ?>/pe.php?return=json">
-                                        <i class="fas fa-copy"></i> 复制
-                                    </button>
-                                </div>
-                                <pre class="bg-light p-3 rounded mt-2"><code>{
-  "success": true,
-  "url": "https://example.com/image.jpg",
-  "type": "pe",
-  "timestamp": 1622505600
-}</code></pre>
+                                <p class="text-muted">图片访问模式由后台「网站设置 → 图片访问模式」统一控制，对 api.php / pc.php / pe.php 全部生效：</p>
+                                <ul class="mb-0">
+                                    <li><strong>302 跳转模式</strong>（默认）：API 直接重定向到真实图片 URL</li>
+                                    <li><strong>代理模式</strong>：由服务器代为下载并转发图片，隐藏真实图片链接</li>
+                                </ul>
                             </div>
                         </div>
                     </div>
@@ -480,24 +471,18 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
         </div>
 
         <div class="card p-4 mb-5">
-            <h3 class="section-title"><i class="fas fa-exchange-alt me-2"></i>返回格式说明</h3>
+            <h3 class="section-title"><i class="fas fa-exchange-alt me-2"></i>图片访问模式</h3>
             <div class="row">
-                <div class="col-md-4 mb-3">
+                <div class="col-md-6 mb-3">
                     <div class="p-3 bg-light rounded h-100">
-                        <h5><i class="fas fa-link text-primary me-1"></i> 默认(重定向)</h5>
+                        <h5><i class="fas fa-link text-primary me-1"></i> 302 跳转模式（默认）</h5>
                         <p class="text-sm">直接重定向到随机图片URL，适用于大多数场景</p>
                     </div>
                 </div>
-                <div class="col-md-4 mb-3">
+                <div class="col-md-6 mb-3">
                     <div class="p-3 bg-light rounded h-100">
-                        <h5><i class="fas fa-file-code text-success me-1"></i> JSON格式</h5>
-                        <p class="text-sm">返回包含图片信息的JSON数据，适合需要处理图片信息的场景</p>
-                    </div>
-                </div>
-                <div class="col-md-4 mb-3">
-                    <div class="p-3 bg-light rounded h-100">
-                        <h5><i class="fas fa-image text-info me-1"></i> 图片流</h5>
-                        <p class="text-sm">直接输出图片二进制数据，适合需要隐藏真实图片URL的场景</p>
+                        <h5><i class="fas fa-image text-info me-1"></i> 代理模式</h5>
+                        <p class="text-sm">由服务器代为下载并转发图片，隐藏真实图片链接</p>
                     </div>
                 </div>
             </div>

@@ -5,7 +5,7 @@
 ## 功能特性
 
 - 🌐 自动识别设备类型（PC/移动端）「v1.0」
-- 📱 支持多种返回格式（重定向、JSON、图片流）「v1.0」
+- 🖼️ 图片访问模式后台可切换（302 跳转 / 代理隐藏真实图片链接）「v3.1.7」
 - 🎛️ 灵活的缓存控制「v1.0」
 - 📊 完整的调用统计「v1.0」
 - 🔐 安全的管理后台「v1.0」
@@ -84,39 +84,23 @@ https://your-domain.com/pe.php
 
 | 参数 | 可选值 | 说明 |
 |------|--------|------|
-| `return` | `redirect`/`json`/`img` | 返回格式，默认重定向 |
 | `cache` | 数字(秒) | 缓存时间，默认0秒（不缓存） |
 
-### 返回格式
+> 图片访问模式由后台「网站设置 → 图片访问模式」统一控制，调用方传参不再影响返回方式。
 
-#### 1. 重定向（默认）
-直接302重定向到随机图片URL，适合`<img>`标签直接使用。
+### 图片访问模式
 
-#### 2. JSON格式
-```json
-{
-  "success": true,
-  "url": "https://example.com/image.jpg",
-  "type": "pc",
-  "timestamp": 1622505600
-}
-```
+#### 1. 302 跳转模式（默认）
+API 直接302重定向到随机图片URL，适合`<img>`标签直接使用。
 
-#### 3. 图片流
-直接输出图片二进制数据，适合需要隐藏真实URL的场景。
+#### 2. 代理模式
+服务器代为下载图片并转发给用户，用户无法看到真实图片URL，可隐藏图片链接。适合不希望暴露真实图片来源的场景。
 
 ### 调用示例
 
 ```html
 <!-- 直接显示图片 -->
 <img src="https://your-domain.com/api.php" alt="随机图片">
-
-<!-- 获取JSON数据 -->
-<script>
-fetch('https://your-domain.com/pc.php?return=json')
-  .then(res => res.json())
-  .then(data => console.log(data));
-</script>
 
 <!-- 启用1小时缓存 -->
 <img src="https://your-domain.com/pe.php?cache=3600" alt="随机图片">
@@ -203,7 +187,7 @@ fetch('https://your-domain.com/pc.php?return=json')
 
 ## 当前版本
 
-v3.1.6
+v3.1.7
 
 ## 许可证
 
