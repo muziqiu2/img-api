@@ -1232,7 +1232,12 @@ function fetchRemoteImage($url) {
         $isValidImage = false;
         foreach ($allowedSignatures as $sig) {
             if (strncmp($signature, $sig, strlen($sig)) === 0) {
-                $isValidImage = true;
+                if ($sig === '52494646') {
+                    // RIFF 头不足以确认 WEBP（WAV/AVI 同为 RIFF 容器），必须校验第 8-11 字节
+                    $isValidImage = (strlen($data) >= 12) && (substr($data, 8, 4) === 'WEBP');
+                } else {
+                    $isValidImage = true;
+                }
                 break;
             }
         }
