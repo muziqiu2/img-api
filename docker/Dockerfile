@@ -21,12 +21,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------- PHP 扩展（本项目必需）----------
-# pdo_sqlite 在 php:8.2-fpm 基础镜像中已内置，无需（且不可）重复安装；
-# 重复安装会因残留 Makefile 的 make clean 破坏源码树，导致后续扩展
-# "Cannot find config.m4" 构建失败。
-# sqlite3: SQLite 存储；zip: 更新系统解压；curl: 更新下载+SSRF 防护；
-# fileinfo: 图片魔数校验；mbstring: 字符串处理
-RUN docker-php-ext-install sqlite3 zip curl fileinfo mbstring
+# php:8.2-fpm-bookworm 基础镜像已通过 --with-pdo-sqlite/--with-sqlite3/--with-curl/
+# --enable-mbstring 内置 pdo_sqlite、sqlite3、curl、mbstring，PHP 8 亦默认内置
+# fileinfo，均无需重复安装。
+# 注意：sqlite3 扩展源码使用 config0.m4（phpize 只认 config.m4），
+# 即使未内置也无法通过 docker-php-ext-install 编译，切勿加入安装列表。
+# 唯一需要额外安装的是 zip（更新系统解压用）。
+RUN docker-php-ext-install zip
 
 # ---------- PHP 运行时配置 ----------
 COPY docker/php.ini /usr/local/etc/php/conf.d/zz-img-api.ini
