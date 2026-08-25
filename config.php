@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.6'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.7'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -528,6 +528,15 @@ function getApiRateLimitMax() {
 function getAdminRateLimitMax() {
     $v = intval(getAppSetting('rate_limit_admin', ''));
     return ($v >= 1 && $v <= 10000) ? $v : RATE_LIMIT_MAX_ADMIN;
+}
+
+// 图片访问模式（后台可配置，存 app_settings 表，未设置时默认 302 跳转）
+// proxy    —— 代理模式：服务器下载图片并转发给用户，隐藏真实图片链接
+// redirect —— 302 跳转模式：直接重定向到真实图片 URL（默认，兼容原行为）
+// 模式由后台完全决定，API 的 return 参数不再生效
+function getImageAccessMode() {
+    $mode = getAppSetting('image_mode', '');
+    return ($mode === 'proxy') ? 'proxy' : 'redirect';
 }
 
 function checkApiRateLimit() {
@@ -1208,19 +1217,27 @@ function fetchRemoteImage($url) {
     }
 
     // 内容验证：检测文件签名（魔数）
+    // 注意：签名必须存为数组"值"（而非键）——'47494638'/'52494646' 这类纯数字字符串
+    // 若作数组键会被 PHP 自动转成整数，strpos/strncmp 收到 int needle 会触发 Deprecated
+    // 且匹配失效（int 被当作字符字节值），导致 GIF/WEBP 图片校验失败
     $allowedSignatures = [
-        'ffd8ff' => 'jpg', // JPEG
-        '89504e47' => 'png', // PNG
-        '47494638' => 'gif', // GIF
-        '52494646' => 'webp_check', // WEBP (starts with RIFF, need more check)
-        '424d' => 'bmp', // BMP
+        'ffd8ff',   // JPEG
+        '89504e47', // PNG
+        '47494638', // GIF
+        '52494646', // WEBP (RIFF)
+        '424d',     // BMP
     ];
     if (strlen($data) >= 4) {
         $signature = bin2hex(substr($data, 0, 4));
         $isValidImage = false;
-        foreach ($allowedSignatures as $sig => $type) {
-            if (strpos($signature, $sig) === 0) {
-                $isValidImage = true;
+        foreach ($allowedSignatures as $sig) {
+            if (strncmp($signature, $sig, strlen($sig)) === 0) {
+                if ($sig === '52494646') {
+                    // RIFF 头不足以确认 WEBP（WAV/AVI 同为 RIFF 容器），必须校验第 8-11 字节
+                    $isValidImage = (strlen($data) >= 12) && (substr($data, 8, 4) === 'WEBP');
+                } else {
+                    $isValidImage = true;
+                }
                 break;
             }
         }
@@ -1261,11 +1278,11 @@ function handleImageApiRequest($type, $countType = null) {
         exit;
     }
 
-    $validReturnTypes = ['redirect', 'json', 'img'];
-    $returnType = isset($_GET['return']) ? $_GET['return'] : 'redirect';
-    if (!in_array($returnType, $validReturnTypes)) {
-        $returnType = 'redirect';
-    }
+    // 图片访问模式由后台配置决定（proxy=代理 / redirect=302跳转），
+    // API 的 return 参数不再生效
+    $mode = getImageAccessMode();
+    // 统计沿用原语义：代理计入 img 列，跳转计入 redirect 列
+    $returnType = ($mode === 'proxy') ? 'img' : 'redirect';
 
     // cache 参数钳制上限（最大 30 天），防止超大值导致时间戳溢出
     $cacheTime = isset($_GET['cache']) ? max(0, min(2592000, intval($_GET['cache']))) : 0;
@@ -1281,19 +1298,8 @@ function handleImageApiRequest($type, $countType = null) {
     if (!$imageUrl) {
         $errorMsg = ($type === 'pc') ? '没有找到可用的PC端图片' :
                     (($type === 'pe') ? '没有找到可用的移动端图片' : '没有找到可用的图片');
-
-        if ($returnType === 'json') {
-            header('Content-Type: application/json; charset=utf-8');
-            echo json_encode([
-                'success' => false,
-                'error' => $errorMsg,
-                'type' => $type,
-                'timestamp' => time()
-            ], JSON_UNESCAPED_UNICODE);
-        } else {
-            http_response_code(404);
-            echo $errorMsg;
-        }
+        http_response_code(404);
+        echo $errorMsg;
         exit;
     }
 
@@ -1310,17 +1316,8 @@ function handleImageApiRequest($type, $countType = null) {
         $imageUrl .= (strpos($imageUrl, '?') === false ? '?' : '&') . $randomParam;
     }
 
-    if ($returnType === 'json') {
-        // JSON模式：不下载图片，直接返回URL信息，避免服务器带宽占用
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode([
-            'success' => true,
-            'url' => $imageUrl,
-            'type' => $type,
-            'timestamp' => time()
-        ], JSON_UNESCAPED_UNICODE);
-    } elseif ($returnType === 'img') {
-        // IMG模式：下载图片并代理返回（仍有SSRF保护）
+    if ($mode === 'proxy') {
+        // 代理模式：服务器下载图片并转发给用户，隐藏真实图片链接（仍有 SSRF 防护）
         $imageData = fetchRemoteImage($imageUrl);
         if ($imageData) {
             $imageInfo = @getimagesizefromstring($imageData);
@@ -1335,7 +1332,7 @@ function handleImageApiRequest($type, $countType = null) {
             echo '无法获取图片';
         }
     } else {
-        // 默认：重定向
+        // 302 跳转模式（默认）：直接重定向到真实图片 URL
         header("Location: $imageUrl");
     }
     exit;

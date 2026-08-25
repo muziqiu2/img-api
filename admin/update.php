@@ -276,6 +276,7 @@ try {
             $settings = getSiteSettings();
             $settings['rate_limit_api'] = getApiRateLimitMax();
             $settings['rate_limit_admin'] = getAdminRateLimitMax();
+            $settings['image_mode'] = getImageAccessMode();
             echo json_encode(array_merge(['success' => true], $settings), JSON_UNESCAPED_UNICODE);
             break;
 
@@ -307,6 +308,12 @@ try {
             $rlAdmin = isset($_POST['rate_limit_admin']) ? intval($_POST['rate_limit_admin']) : 0;
             if ($rlAdmin >= 1 && $rlAdmin <= 10000) {
                 setAppSetting('rate_limit_admin', (string)$rlAdmin);
+            }
+
+            // 图片访问模式保存（仅接受 proxy/redirect，非法值忽略以保持当前模式）
+            $imageMode = isset($_POST['image_mode']) ? trim($_POST['image_mode']) : '';
+            if ($imageMode === 'proxy' || $imageMode === 'redirect') {
+                setAppSetting('image_mode', $imageMode);
             }
 
             logAdminAction('更新了网站展示设置');

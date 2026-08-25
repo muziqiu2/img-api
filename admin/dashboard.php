@@ -539,6 +539,16 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 <small class="form-text text-muted">底部展示的备案号，链接到工信部网站。留空则不展示备案信息</small>
                             </div>
                             <hr>
+                            <h6 class="text-muted mb-3">图片访问模式</h6>
+                            <div class="form-group">
+                                <label for="image_mode">图片访问模式</label>
+                                <select class="form-control" id="image_mode" name="image_mode">
+                                    <option value="redirect">302 跳转模式（默认）</option>
+                                    <option value="proxy">代理模式（隐藏真实图片链接）</option>
+                                </select>
+                                <small class="form-text text-muted">代理模式：所有 API（api.php/pc.php/pe.php）由服务器代为下载并转发图片，用户无法看到真实图片 URL，可隐藏图片链接；302 跳转模式：API 直接重定向到真实图片 URL。此设置对全部 API 生效，调用方传参不再影响返回方式。</small>
+                            </div>
+                            <hr>
                             <h6 class="text-muted mb-3">频率限制设置</h6>
                             <div class="form-group">
                                 <label for="rate_limit_api">API 每分钟最大请求数</label>
@@ -1230,6 +1240,7 @@ function loadSiteSettings() {
             document.getElementById('site_icp').value = data.site_icp || '';
             document.getElementById('rate_limit_api').value = data.rate_limit_api || '';
             document.getElementById('rate_limit_admin').value = data.rate_limit_admin || '';
+            document.getElementById('image_mode').value = data.image_mode || 'redirect';
         }
     })
     .catch(function() {});
