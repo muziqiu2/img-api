@@ -368,17 +368,13 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                     </thead>
                     <tbody>
                         <tr>
-                            <td>return</td>
-                            <td>json/img</td>
-                            <td>返回格式（默认重定向图片）</td>
-                        </tr>
-                        <tr>
                             <td>cache</td>
                             <td>数字(秒)</td>
                             <td>缓存控制时间，默认0秒（不缓存）</td>
                         </tr>
                     </tbody>
                 </table>
+                <p class="text-muted small mb-0">图片访问模式由后台「网站设置 → 图片访问模式」统一控制，调用方传参不再影响返回方式。</p>
             </div>
 
             <div class="mb-4">
