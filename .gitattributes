@@ -1,7 +1,0 @@
-# 发行版 zipball 排除项（git archive / GitHub Release 遵守 export-ignore）
-# 这些文件保留在仓库中（开发 + GitHub Actions 构建镜像用），但不进发行包，
-# 避免非 Docker 用户下载到无用的部署配置文件。
-docker/            export-ignore
-docker-compose.yml export-ignore
-.dockerignore      export-ignore
-.github/           export-ignore
