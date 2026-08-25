@@ -273,7 +273,10 @@ try {
         // 9) 获取网站展示设置
         // ============================================
         case 'get_site_settings':
-            echo json_encode(array_merge(['success' => true], getSiteSettings()), JSON_UNESCAPED_UNICODE);
+            $settings = getSiteSettings();
+            $settings['rate_limit_api'] = getApiRateLimitMax();
+            $settings['rate_limit_admin'] = getAdminRateLimitMax();
+            echo json_encode(array_merge(['success' => true], $settings), JSON_UNESCAPED_UNICODE);
             break;
 
         // ============================================
@@ -295,6 +298,16 @@ try {
             }
             // 备案号允许为空，直接保存（空值表示不展示）
             setAppSetting('site_icp', isset($_POST['site_icp']) ? trim($_POST['site_icp']) : '');
+
+            // 限流值保存（仅接受 1-10000 整数，非法值忽略以保持默认）
+            $rlApi = isset($_POST['rate_limit_api']) ? intval($_POST['rate_limit_api']) : 0;
+            if ($rlApi >= 1 && $rlApi <= 10000) {
+                setAppSetting('rate_limit_api', (string)$rlApi);
+            }
+            $rlAdmin = isset($_POST['rate_limit_admin']) ? intval($_POST['rate_limit_admin']) : 0;
+            if ($rlAdmin >= 1 && $rlAdmin <= 10000) {
+                setAppSetting('rate_limit_admin', (string)$rlAdmin);
+            }
 
             logAdminAction('更新了网站展示设置');
             echo json_encode(['success' => true, 'message' => '网站设置已保存'], JSON_UNESCAPED_UNICODE);

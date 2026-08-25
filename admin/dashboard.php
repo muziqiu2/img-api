@@ -18,9 +18,10 @@ $currentType = isset($_GET['type']) && $_GET['type'] === 'pe' ? 'pe' : 'pc';
 $currentPage = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $perPage = 10;
 
-// 检查管理后台频率限制（限频时禁止所有写操作）
+// 检查管理后台频率限制：仅对 POST 写操作生效（防止自动化脚本批量操作），
+// GET 页面浏览不受限，避免管理员正常快速点页面被误判为 429
 $rateLimited = false;
-if (!checkAdminRateLimit()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !checkAdminRateLimit()) {
     $rateLimited = true;
     $message = "请求过于频繁，请稍后再试";
     $messageType = 'error';
@@ -536,6 +537,18 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 <label for="site_icp">ICP 备案号</label>
                                 <input type="text" class="form-control" id="site_icp" name="site_icp" placeholder="如：粤ICP备xxxxxxxx号（可留空不展示）" maxlength="100">
                                 <small class="form-text text-muted">底部展示的备案号，链接到工信部网站。留空则不展示备案信息</small>
+                            </div>
+                            <hr>
+                            <h6 class="text-muted mb-3">频率限制设置</h6>
+                            <div class="form-group">
+                                <label for="rate_limit_api">API 每分钟最大请求数</label>
+                                <input type="number" class="form-control" id="rate_limit_api" name="rate_limit_api" min="1" max="10000" placeholder="默认 100">
+                                <small class="form-text text-muted">每个 IP 每分钟最多可请求 API（api.php/pc.php/pe.php）的次数，超过返回 429。留空使用默认 100</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="rate_limit_admin">后台操作每分钟最大请求数</label>
+                                <input type="number" class="form-control" id="rate_limit_admin" name="rate_limit_admin" min="1" max="10000" placeholder="默认 10">
+                                <small class="form-text text-muted">后台敏感操作（增删图片、更新、回滚等）每分钟最大次数，防自动化脚本。留空使用默认 10</small>
                             </div>
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> 保存设置
@@ -1215,6 +1228,8 @@ function loadSiteSettings() {
             document.getElementById('site_lead').value = data.site_lead || '';
             document.getElementById('site_copyright').value = data.site_copyright || '';
             document.getElementById('site_icp').value = data.site_icp || '';
+            document.getElementById('rate_limit_api').value = data.rate_limit_api || '';
+            document.getElementById('rate_limit_admin').value = data.rate_limit_admin || '';
         }
     })
     .catch(function() {});

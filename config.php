@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.5'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.6'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -518,9 +518,21 @@ function applyRateLimit($key, $maxRequests, $windowSeconds) {
     return true;
 }
 
+// 可调限流值（后台可配置，存 app_settings 表，未设置时回退到常量默认值）
+// 范围钳制在 1 ~ 10000，防止配置异常导致误封或绕过限制
+function getApiRateLimitMax() {
+    $v = intval(getAppSetting('rate_limit_api', ''));
+    return ($v >= 1 && $v <= 10000) ? $v : RATE_LIMIT_MAX_API;
+}
+
+function getAdminRateLimitMax() {
+    $v = intval(getAppSetting('rate_limit_admin', ''));
+    return ($v >= 1 && $v <= 10000) ? $v : RATE_LIMIT_MAX_ADMIN;
+}
+
 function checkApiRateLimit() {
     $ip = md5(getClientIp());
-    return applyRateLimit('api_' . $ip, RATE_LIMIT_MAX_API, RATE_LIMIT_WINDOW);
+    return applyRateLimit('api_' . $ip, getApiRateLimitMax(), RATE_LIMIT_WINDOW);
 }
 
 function checkAdminRateLimit() {
@@ -529,7 +541,7 @@ function checkAdminRateLimit() {
     }
 
     $username = md5($_SESSION['admin_username'] ?? 'unknown');
-    return applyRateLimit('admin_' . $username, RATE_LIMIT_MAX_ADMIN, RATE_LIMIT_WINDOW);
+    return applyRateLimit('admin_' . $username, getAdminRateLimitMax(), RATE_LIMIT_WINDOW);
 }
 
 // 通用管理后台频率限制函数（可自定义最大请求数）
