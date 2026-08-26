@@ -792,6 +792,19 @@ if ($mustChangePassword && $currentSection !== 'user') {
 }
 .app-toast i { margin-right: 8px; flex-shrink: 0; }
 .app-toast span { flex: 1; }
+/* 移动端表格长文本处理：允许折行，避免长文件名/说明超出卡片撑破界面 */
+.table-responsive { -webkit-overflow-scrolling: touch; }
+.table-wrap-text th,
+.table-wrap-text td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.table-wrap-text code {
+    word-break: break-all;
+    white-space: normal;
+}
+/* 操作列等不希望折行的单元格（仅在本表中豁免） */
+.table-wrap-text .nowrap { white-space: nowrap; }
 .app-toast-close {
     margin-left: 10px;
     padding: 0 2px;
@@ -1176,20 +1189,20 @@ function loadBackupList() {
                 box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无备份文件</div>';
                 return;
             }
-            var html = '<table class="table table-striped"><thead><tr><th>文件名</th><th>大小 (KB)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+            var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>文件名</th><th style="width:80px;">大小 (KB)</th><th style="width:110px;">创建时间</th><th style="width:130px;">操作</th></tr></thead><tbody>';
             data.backups.forEach(function(b) {
                 html += '<tr>';
-                html += '<td><code>' + b.filename + '</code></td>';
+                html += '<td>' + b.filename + '</td>';
                 html += '<td>' + b.size + ' KB</td>';
                 html += '<td>' + b.time + '</td>';
-                html += '<td>';
+                html += '<td class="nowrap">';
                 html += '<button type="button" class="btn btn-sm btn-warning mr-1" onclick="doRollback(\'' + b.filename + '\')">';
                 html += '<i class="fas fa-undo"></i> 恢复</button>';
                 html += '<button type="button" class="btn btn-sm btn-danger" onclick="deleteBackup(\'' + b.filename + '\')">';
                 html += '<i class="fas fa-trash"></i> 删除</button>';
                 html += '</td></tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             box.innerHTML = html;
         })
         .catch(function() {
@@ -1206,7 +1219,7 @@ function loadUpdateHistory() {
                 box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
                 return;
             }
-            var html = '<table class="table table-striped"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
+            var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
             data.logs.forEach(function(log) {
                 var statusClass = 'badge-info';
                 var statusText = log.status;
@@ -1222,7 +1235,7 @@ function loadUpdateHistory() {
                 html += '<td>' + (log.message || '-') + '</td>';
                 html += '</tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             box.innerHTML = html;
         })
         .catch(function() {
