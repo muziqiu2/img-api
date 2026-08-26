@@ -846,31 +846,35 @@ function setCachedImageCount($type, $count) {
 }
 
 function clearCachedImageUrls($type) {
-    // 同时清理旧版全量列表缓存、数量缓存与最大 id 缓存，避免升级后残留
-    foreach ([CACHE_DIR . "/{$type}_urls.cache", imageCountCacheFile($type), imageMaxIdCacheFile($type)] as $cacheFile) {
+    // 同时清理旧版全量列表缓存、数量缓存、旧 maxid 缓存与新的 id 列表缓存，避免增删图后残留
+    foreach ([CACHE_DIR . "/{$type}_urls.cache", CACHE_DIR . "/{$type}_maxid.cache", imageCountCacheFile($type), imageIdListCacheFile($type)] as $cacheFile) {
         if (file_exists($cacheFile)) {
             @unlink($cacheFile);
         }
     }
 }
 
-// 图片最大 id 缓存：随机取图时作为 id 取值上界（rowid 范围随机用）。
-// 与 count 缓存同样为 O(1) 内存，避免每请求查 MAX(id)。
-function imageMaxIdCacheFile($type) {
-    return CACHE_DIR . "/{$type}_maxid.cache";
+// 图片 id 列表缓存：随机取图时一次性载入该类型的全部 id，用 array_rand 均匀随机选取。
+// 相比 rowid 范围随机（对 id 空洞敏感、分布不均，会反复命中同一张）更均匀；
+// 相比缓存全量 url 列表（每请求 json_decode 大数组、内存 O(n)）更轻量——id 为 int，
+// 数千条也仅几 KB~几十 KB，解析开销可忽略。
+function imageIdListCacheFile($type) {
+    return CACHE_DIR . "/{$type}_ids.cache";
 }
 
-function getCachedImageMaxId($type) {
-    $cacheFile = imageMaxIdCacheFile($type);
+function getCachedImageIds($type) {
+    $cacheFile = imageIdListCacheFile($type);
     if (file_exists($cacheFile) && time() - filemtime($cacheFile) < CACHE_TTL) {
-        $maxId = @file_get_contents($cacheFile);
-        return is_numeric($maxId) ? (int)$maxId : null;
+        $ids = @json_decode(@file_get_contents($cacheFile), true);
+        if (is_array($ids) && $ids !== []) {
+            return $ids;
+        }
     }
     return null;
 }
 
-function setCachedImageMaxId($type, $maxId) {
-    @file_put_contents(imageMaxIdCacheFile($type), (string)(int)$maxId);
+function setCachedImageIds($type, $ids) {
+    @file_put_contents(imageIdListCacheFile($type), json_encode(array_values(array_map('intval', $ids))));
 }
 
 // ==================== 统计函数 ====================
@@ -1222,50 +1226,26 @@ function getAdminLogs($limit = 100) {
 function getRandomImageUrl($type = 'pc') {
     $db = getDb();
 
-    // rowid 范围随机：随机取一个目标 id，用主键索引直接定位 >= 目标的第一行，
-    // 替代「LIMIT 1 OFFSET random」——offset 很大时 SQLite 需线性扫描 offset 行，
-    // 数据量越大越慢；本算法借 id 主键索引跳转，接近 O(log n)，无全表排序。
-    // id 存在空洞时自动向上取最近一行，分布基本均匀。
-    $maxId = getCachedImageMaxId($type);
-    if ($maxId === null) {
-        $maxId = (int)$db->query("SELECT MAX(id) FROM image_urls WHERE type = " . $db->quote($type))->fetchColumn();
-        setCachedImageMaxId($type, $maxId);
+    // 均匀随机：缓存该类型全部图片 id，array_rand 随机取一个。
+    // 对比 rowid 范围随机（id 空洞时分布不均、反复命中同一张）无空洞偏差、各图等概率；
+    // id 仅为 int 数组，即使几千条也只需几 KB~几十 KB，载入/解析开销可忽略。
+    $ids = getCachedImageIds($type);
+    if ($ids === null) {
+        $rows = $db->query("SELECT id FROM image_urls WHERE type = " . $db->quote($type))->fetchAll(PDO::FETCH_ASSOC);
+        $ids = array_column($rows, 'id');
+        setCachedImageIds($type, $ids);
+        $ids = array_values(array_map('intval', $ids));
     }
-    if ($maxId <= 0) {
+    if (empty($ids)) {
         return false;
     }
 
-    $target = mt_rand(1, $maxId);
-    $id = getRandomImageRowId($db, $type, $target);
-
-    // 并发删图可能导致缓存的 maxId 偏大、target 越界取不到行：
-    // 刷新 maxId 缓存后重试一次
-    if ($id === false) {
-        $maxId = (int)$db->query("SELECT MAX(id) FROM image_urls WHERE type = " . $db->quote($type))->fetchColumn();
-        if ($maxId <= 0) {
-            return false;
-        }
-        setCachedImageMaxId($type, $maxId);
-        $target = mt_rand(1, $maxId);
-        $id = getRandomImageRowId($db, $type, $target);
-    }
-
-    if ($id === false) {
-        return false;
-    }
+    $id = $ids[array_rand($ids)];
 
     $stmt = $db->prepare("SELECT url FROM image_urls WHERE id = ? AND type = ?");
     $stmt->execute([$id, $type]);
     $url = $stmt->fetchColumn();
     return $url !== false ? $url : false;
-}
-
-// 取满足 type 且 id >= target 的第一行 id（利用主键索引，避免大 offset 扫描）
-function getRandomImageRowId($db, $type, $target) {
-    $stmt = $db->prepare("SELECT id FROM image_urls WHERE type = ? AND id >= ? ORDER BY id LIMIT 1");
-    $stmt->execute([$type, $target]);
-    $rowId = $stmt->fetchColumn();
-    return $rowId === false ? false : (int)$rowId;
 }
 
 // SSRF防护：安全获取远程图片（每一跳重定向均重新校验，防止重定向绕过防护）
