@@ -478,8 +478,39 @@ function validateCsrfToken($token) {
 
 // ==================== 频率限制函数 ====================
 
-// 通用频率限制核心：原子递增 + 超限补偿回退 + 概率化清理过期记录
+// 限流计数是否为内存级（APCu）：单机部署时可用，消除每请求的 SQLite 写锁竞争。
+// ⚠️ 仅限单机：APCu 为共享内存、进程间可见但不跨主机，负载均衡多机时各节点各自计数，
+//    限流会被放大 N 倍，故仅在单机时启用，否则回退到 SQLite 计数。
+function rateLimitCanUseApcu() {
+    return function_exists('apcu_fetch') && is_callable('apcu_inc') && @apcu_enabled();
+}
+
+// 限流入口：优先 APCu 内存计数（内存级、无 SQLite 写），无 APCu 时降级回 SQLite 计数。
+// 限流计数属可丢弃数据（重启/清缓存仅使窗口重新计数），正是内存计数的适用场景。
 function applyRateLimit($key, $maxRequests, $windowSeconds) {
+    if (rateLimitCanUseApcu()) {
+        return applyRateLimitApcu($key, $maxRequests, $windowSeconds);
+    }
+    return applyRateLimitDb($key, $maxRequests, $windowSeconds);
+}
+
+// APCu 固定窗口计数：按时间窗口分桶，窗口过期由 TTL 自动清理，无需手动 DELETE。
+// apcu_inc 为原子操作（跨 PHP-FPM worker），效果等价于锁，且无任何 DB 写。
+function applyRateLimitApcu($key, $maxRequests, $windowSeconds) {
+    // 窗口分桶号，保证同窗口内同一 key 落在同一 bucket
+    $bucket = (int)floor(time() / $windowSeconds);
+    $apcuKey = 'rl:' . $bucket . ':' . md5($key);
+    // initial=0：key 首次创建时计为 1；TTL 留 30s 余量避免窗口抖动误清
+    $count = apcu_inc($apcuKey, 1, $success, $windowSeconds + 30, 0);
+    if ($success) {
+        return $count <= $maxRequests;
+    }
+    // APCu 内部异常：保守放行，避免误封（DB 降级路径会兜底）
+    return true;
+}
+
+// 限流降级路径：SQLite 滑动窗口计数（无 APCu 时使用，保持原有行为）
+function applyRateLimitDb($key, $maxRequests, $windowSeconds) {
     $now = time();
     $windowStart = $now - $windowSeconds;
 
@@ -815,12 +846,31 @@ function setCachedImageCount($type, $count) {
 }
 
 function clearCachedImageUrls($type) {
-    // 同时清理旧版全量列表缓存与新版数量缓存，避免升级后残留
-    foreach ([CACHE_DIR . "/{$type}_urls.cache", imageCountCacheFile($type)] as $cacheFile) {
+    // 同时清理旧版全量列表缓存、数量缓存与最大 id 缓存，避免升级后残留
+    foreach ([CACHE_DIR . "/{$type}_urls.cache", imageCountCacheFile($type), imageMaxIdCacheFile($type)] as $cacheFile) {
         if (file_exists($cacheFile)) {
             @unlink($cacheFile);
         }
     }
+}
+
+// 图片最大 id 缓存：随机取图时作为 id 取值上界（rowid 范围随机用）。
+// 与 count 缓存同样为 O(1) 内存，避免每请求查 MAX(id)。
+function imageMaxIdCacheFile($type) {
+    return CACHE_DIR . "/{$type}_maxid.cache";
+}
+
+function getCachedImageMaxId($type) {
+    $cacheFile = imageMaxIdCacheFile($type);
+    if (file_exists($cacheFile) && time() - filemtime($cacheFile) < CACHE_TTL) {
+        $maxId = @file_get_contents($cacheFile);
+        return is_numeric($maxId) ? (int)$maxId : null;
+    }
+    return null;
+}
+
+function setCachedImageMaxId($type, $maxId) {
+    @file_put_contents(imageMaxIdCacheFile($type), (string)(int)$maxId);
 }
 
 // ==================== 统计函数 ====================
@@ -1172,34 +1222,50 @@ function getAdminLogs($limit = 100) {
 function getRandomImageUrl($type = 'pc') {
     $db = getDb();
 
-    // 仅缓存数量（O(1) 内存），用随机 OFFSET 取一行，
-    // 避免每次请求读取并 json_decode 全量 URL 列表（内存与解析耗时均为 O(n)）
-    $count = getCachedImageCount($type);
-    if ($count === null) {
-        $count = getImageCount($type);
-        setCachedImageCount($type, $count);
+    // rowid 范围随机：随机取一个目标 id，用主键索引直接定位 >= 目标的第一行，
+    // 替代「LIMIT 1 OFFSET random」——offset 很大时 SQLite 需线性扫描 offset 行，
+    // 数据量越大越慢；本算法借 id 主键索引跳转，接近 O(log n)，无全表排序。
+    // id 存在空洞时自动向上取最近一行，分布基本均匀。
+    $maxId = getCachedImageMaxId($type);
+    if ($maxId === null) {
+        $maxId = (int)$db->query("SELECT MAX(id) FROM image_urls WHERE type = " . $db->quote($type))->fetchColumn();
+        setCachedImageMaxId($type, $maxId);
     }
-    if ($count <= 0) {
+    if ($maxId <= 0) {
         return false;
     }
 
-    $stmt = $db->prepare("SELECT url FROM image_urls WHERE type = ? LIMIT 1 OFFSET ?");
-    $stmt->execute([$type, mt_rand(0, $count - 1)]);
-    $url = $stmt->fetchColumn();
+    $target = mt_rand(1, $maxId);
+    $id = getRandomImageRowId($db, $type, $target);
 
-    // 并发删除可能导致缓存的计数偏大、OFFSET 越界取不到行：
-    // 按实际计数重试一次并刷新计数缓存
-    if ($url === false) {
-        $count = getImageCount($type);
-        if ($count <= 0) {
+    // 并发删图可能导致缓存的 maxId 偏大、target 越界取不到行：
+    // 刷新 maxId 缓存后重试一次
+    if ($id === false) {
+        $maxId = (int)$db->query("SELECT MAX(id) FROM image_urls WHERE type = " . $db->quote($type))->fetchColumn();
+        if ($maxId <= 0) {
             return false;
         }
-        setCachedImageCount($type, $count);
-        $stmt->execute([$type, mt_rand(0, $count - 1)]);
-        $url = $stmt->fetchColumn();
+        setCachedImageMaxId($type, $maxId);
+        $target = mt_rand(1, $maxId);
+        $id = getRandomImageRowId($db, $type, $target);
     }
 
+    if ($id === false) {
+        return false;
+    }
+
+    $stmt = $db->prepare("SELECT url FROM image_urls WHERE id = ? AND type = ?");
+    $stmt->execute([$id, $type]);
+    $url = $stmt->fetchColumn();
     return $url !== false ? $url : false;
+}
+
+// 取满足 type 且 id >= target 的第一行 id（利用主键索引，避免大 offset 扫描）
+function getRandomImageRowId($db, $type, $target) {
+    $stmt = $db->prepare("SELECT id FROM image_urls WHERE type = ? AND id >= ? ORDER BY id LIMIT 1");
+    $stmt->execute([$type, $target]);
+    $rowId = $stmt->fetchColumn();
+    return $rowId === false ? false : (int)$rowId;
 }
 
 // SSRF防护：安全获取远程图片（每一跳重定向均重新校验，防止重定向绕过防护）
