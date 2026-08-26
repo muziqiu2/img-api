@@ -500,8 +500,8 @@ function applyRateLimitApcu($key, $maxRequests, $windowSeconds) {
     // 窗口分桶号，保证同窗口内同一 key 落在同一 bucket
     $bucket = (int)floor(time() / $windowSeconds);
     $apcuKey = 'rl:' . $bucket . ':' . md5($key);
-    // initial=0：key 首次创建时计为 1；TTL 留 30s 余量避免窗口抖动误清
-    $count = apcu_inc($apcuKey, 1, $success, $windowSeconds + 30, 0);
+    // apcu_inc(key, step, &success, ttl)：key 首次创建时按 step 计为 1；TTL 留 30s 余量避免窗口抖动误清
+    $count = apcu_inc($apcuKey, 1, $success, $windowSeconds + 30);
     if ($success) {
         return $count <= $maxRequests;
     }
