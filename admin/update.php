@@ -278,6 +278,7 @@ try {
             $settings['rate_limit_admin'] = getAdminRateLimitMax();
             $settings['image_mode'] = getImageAccessMode();
             $settings['enable_json'] = isJsonEnabled() ? '1' : '0';
+            $settings['stats_auto_flush_interval'] = getStatsAutoFlushInterval();
             echo json_encode(array_merge(['success' => true], $settings), JSON_UNESCAPED_UNICODE);
             break;
 
@@ -320,6 +321,18 @@ try {
             // JSON 输出开关保存（仅接受 1/0，默认关闭）
             $enableJson = isset($_POST['enable_json']) ? trim($_POST['enable_json']) : '0';
             setAppSetting('enable_json', ($enableJson === '1') ? '1' : '0');
+
+            // 统计自动落库间隔保存（0=禁用；10~86400 秒有效；非法/留空则回退默认）
+            $flushIntervalRaw = isset($_POST['stats_auto_flush_interval']) ? trim($_POST['stats_auto_flush_interval']) : '';
+            if ($flushIntervalRaw !== '') {
+                $flushInterval = intval($flushIntervalRaw);
+                if ($flushInterval === 0 || ($flushInterval >= 10 && $flushInterval <= 86400)) {
+                    setAppSetting('stats_auto_flush_interval', (string)$flushInterval);
+                }
+            } else {
+                // 留空表示恢复默认，删除配置项
+                deleteAppSetting('stats_auto_flush_interval');
+            }
 
             logAdminAction('更新了网站展示设置');
             echo json_encode(['success' => true, 'message' => '网站设置已保存'], JSON_UNESCAPED_UNICODE);

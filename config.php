@@ -19,8 +19,10 @@ define('DB_FILE', __DIR__ . '/data/app.db');
 define('CACHE_DIR', __DIR__ . '/data/cache');
 define('CACHE_TTL', 300); // 5分钟缓存
 
-// 统计自动落库间隔（秒）：API 写入统计缓冲后，每隔该间隔把缓冲合并进 SQLite，
-// 避免「长期不打开后台」导致首页计数停滞、数据悬在易丢失的缓存文件中。0 表示禁用自动落库。
+// 统计自动落库默认间隔（秒）：作为后台未配置（或配置非法）时的回退默认值。
+// API 写入统计缓冲后，每隔该间隔把缓冲合并进 SQLite，
+// 避免「长期不打开后台」导致首页计数停滞、数据悬在易丢失的缓存文件中。
+// 实际生效值由 getStatsAutoFlushInterval() 读取后台「网站设置」配置，0 表示禁用自动落库。
 define('STATS_AUTO_FLUSH_INTERVAL', 60);
 
 // 会话配置
@@ -551,6 +553,22 @@ function isJsonEnabled() {
     return getAppSetting('enable_json', '0') === '1';
 }
 
+// 统计自动落库间隔（后台可配置，存 app_settings 表，未设置时回退到常量默认值）
+// 范围：0 表示禁用自动落库；10 ~ 86400 秒（1天）为有效值，过小会退化为高频写库、过大则近似禁用。
+// 非法值均回退到 STATS_AUTO_FLUSH_INTERVAL 默认值。
+function getStatsAutoFlushInterval() {
+    $raw = getAppSetting('stats_auto_flush_interval', '');
+    // 未配置（空字符串）时回退默认；需区分「未设置」与「显式设为 0 禁用」
+    if ($raw === '') {
+        return STATS_AUTO_FLUSH_INTERVAL;
+    }
+    $v = intval($raw);
+    if ($v === 0) {
+        return 0; // 显式禁用
+    }
+    return ($v >= 10 && $v <= 86400) ? $v : STATS_AUTO_FLUSH_INTERVAL;
+}
+
 function checkApiRateLimit() {
     $ip = md5(getClientIp());
     return applyRateLimit('api_' . $ip, getApiRateLimitMax(), RATE_LIMIT_WINDOW);
@@ -970,9 +988,9 @@ function archiveOldCallStats() {
 // 按固定间隔自动落库：把统计缓冲合并进 SQLite，避免「长期不打开后台」导致计数滞留缓存而丢失。
 // 使用独立落库锁 + 时间戳标记文件做节流与并发互斥；落库是后台性维护动作，不阻塞 API 响应。
 function autoFlushStatsIfDue() {
-    $interval = (int)STATS_AUTO_FLUSH_INTERVAL;
+    $interval = getStatsAutoFlushInterval();
     if ($interval <= 0) {
-        return; // 已禁用自动落库
+        return; // 已在后台禁用自动落库
     }
 
     $markerFile = CACHE_DIR . '/stats_flush_marker';

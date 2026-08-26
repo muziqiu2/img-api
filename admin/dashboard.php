@@ -568,6 +568,13 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 <input type="number" class="form-control" id="rate_limit_admin" name="rate_limit_admin" min="1" max="10000" placeholder="默认 10">
                                 <small class="form-text text-muted">后台敏感操作（增删图片、更新、回滚等）每分钟最大次数，防自动化脚本。留空使用默认 10</small>
                             </div>
+                            <hr>
+                            <h6 class="text-muted mb-3">统计设置</h6>
+                            <div class="form-group">
+                                <label for="stats_auto_flush_interval">统计自动落库间隔（秒）</label>
+                                <input type="number" class="form-control" id="stats_auto_flush_interval" name="stats_auto_flush_interval" min="0" max="86400" step="1" placeholder="默认 60">
+                                <small class="form-text text-muted">API 调用统计先写入缓冲、按此间隔自动合并进数据库。填 0 表示关闭自动落库（仅打开后台时才落库）；建议 10~3600。留空恢复默认 60 秒。</small>
+                            </div>
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> 保存设置
                             </button>
@@ -1380,6 +1387,9 @@ function loadSiteSettings() {
             document.getElementById('rate_limit_admin').value = data.rate_limit_admin || '';
             document.getElementById('image_mode').value = data.image_mode || 'redirect';
             document.getElementById('enable_json').value = data.enable_json || '0';
+            // 0 是合法值（表示禁用自动落库），不能用 || 兜底，否则会误显示为空
+            var flushInterval = data.stats_auto_flush_interval;
+            document.getElementById('stats_auto_flush_interval').value = (flushInterval === 0 || flushInterval === '0') ? '0' : (flushInterval || '');
         }
     })
     .catch(function() {});
