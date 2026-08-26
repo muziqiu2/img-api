@@ -38,7 +38,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.2.1.1'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.2.1.2'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -1249,17 +1249,38 @@ function getRandomImageUrl($type = 'pc') {
     // id 仅为 int 数组，即使几千条也只需几 KB~几十 KB，载入/解析开销可忽略。
     $ids = getCachedImageIds($type);
     if ($ids === null) {
-        $rows = $db->query("SELECT id FROM image_urls WHERE type = " . $db->quote($type))->fetchAll(PDO::FETCH_ASSOC);
-        $ids = array_column($rows, 'id');
-        setCachedImageIds($type, $ids);
-        $ids = array_values(array_map('intval', $ids));
+        $ids = loadImageIdList($db, $type);
     }
     if (empty($ids)) {
         return false;
     }
 
+    // 抽中已删除的陈旧 id 时（删除图片与随机请求并发、或缓存未及时失效），
+    // 重建 id 列表后重试一次，避免单次 404（与旧版「按实际计数重试一次并刷新计数缓存」等价）。
     $id = $ids[array_rand($ids)];
+    $url = fetchImageUrlById($db, $id, $type);
+    if ($url !== false) {
+        return $url;
+    }
 
+    $ids = loadImageIdList($db, $type);
+    if (empty($ids)) {
+        return false;
+    }
+    $id = $ids[array_rand($ids)];
+    return fetchImageUrlById($db, $id, $type);
+}
+
+// 从数据库载入某类型的全部图片 id 并写入缓存（未命中时重新构建）
+function loadImageIdList($db, $type) {
+    $rows = $db->query("SELECT id FROM image_urls WHERE type = " . $db->quote($type))->fetchAll(PDO::FETCH_ASSOC);
+    $ids = array_values(array_map('intval', array_column($rows, 'id')));
+    setCachedImageIds($type, $ids);
+    return $ids;
+}
+
+// 按 id 与类型取图片 URL（不存在返回 false）
+function fetchImageUrlById($db, $id, $type) {
     $stmt = $db->prepare("SELECT url FROM image_urls WHERE id = ? AND type = ?");
     $stmt->execute([$id, $type]);
     $url = $stmt->fetchColumn();
