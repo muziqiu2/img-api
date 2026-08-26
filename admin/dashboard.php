@@ -225,6 +225,12 @@ if ($mustChangePassword && $currentSection !== 'user') {
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="?section=environment" class="nav-link <?php echo $currentSection === 'environment' ? 'active' : ''; ?>">
+                            <i class="nav-icon fas fa-stethoscope"></i>
+                            <p>环境检测</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="logout.php" class="nav-link">
                             <i class="nav-icon fas fa-sign-out-alt"></i>
                             <p>退出登录</p>
@@ -248,6 +254,7 @@ if ($mustChangePassword && $currentSection !== 'user') {
                             elseif ($currentSection === 'user') echo '用户设置';
                             elseif ($currentSection === 'site') echo '网站设置';
                             elseif ($currentSection === 'update') echo '系统更新';
+                            elseif ($currentSection === 'environment') echo '环境检测';
                             ?>
                         </h1>
                     </div>
@@ -548,6 +555,14 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 </select>
                                 <small class="form-text text-muted">代理模式：所有 API（api.php/pc.php/pe.php）由服务器代为下载并转发图片，用户无法看到真实图片 URL，可隐藏图片链接；302 跳转模式：API 直接重定向到真实图片 URL。此设置对全部 API 生效，调用方传参不再影响返回方式。</small>
                             </div>
+                            <div class="form-group">
+                                <label for="enable_json">JSON 格式输出</label>
+                                <select class="form-control" id="enable_json" name="enable_json">
+                                    <option value="0">关闭（默认）</option>
+                                    <option value="1">开启</option>
+                                </select>
+                                <small class="form-text text-warning">开启后，可在 api.php/pc.php/pe.php 后加 <code>?format=json</code> 返回图片地址的 JSON 数据。注意：当「图片访问模式」为代理模式时，JSON 会返回真实的图片 URL，从而暴露代理模式本应隐藏的图片链接，请仅在确认无泄露风险时开启。</small>
+                            </div>
                             <hr>
                             <h6 class="text-muted mb-3">频率限制设置</h6>
                             <div class="form-group">
@@ -560,6 +575,13 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 <input type="number" class="form-control" id="rate_limit_admin" name="rate_limit_admin" min="1" max="10000" placeholder="默认 10">
                                 <small class="form-text text-muted">后台敏感操作（增删图片、更新、回滚等）每分钟最大次数，防自动化脚本。留空使用默认 10</small>
                             </div>
+                            <hr>
+                            <h6 class="text-muted mb-3">统计设置</h6>
+                            <div class="form-group">
+                                <label for="stats_auto_flush_interval">统计自动落库间隔（秒）</label>
+                                <input type="number" class="form-control" id="stats_auto_flush_interval" name="stats_auto_flush_interval" min="0" max="86400" step="1" placeholder="默认 60">
+                                <small class="form-text text-muted">API 调用统计先写入缓冲、按此间隔自动合并进数据库。填 0 表示关闭自动落库（仅打开后台时才落库）；建议 10~3600。留空恢复默认 60 秒。</small>
+                            </div>
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> 保存设置
                             </button>
@@ -567,6 +589,8 @@ if ($mustChangePassword && $currentSection !== 'user') {
                     </div>
                 </div>
 
+                <?php elseif ($currentSection === 'environment'): ?>
+                <?php echo renderEnvironmentChecksHtml(); ?>
                 <?php elseif ($currentSection === 'update'): ?>
                 <!-- 当前版本信息卡 -->
                 <div class="row">
@@ -699,32 +723,106 @@ if ($mustChangePassword && $currentSection !== 'user') {
                         </div>
                     </div>
                 </div>
+
+                <!-- 环境检测明细（复用环境检测页的渲染） -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h3 class="card-title">环境检测明细</h3>
+                        <div class="card-tools">
+                            <a href="?section=environment" class="btn btn-tool" title="前往完整环境检测页"><i class="fas fa-external-link-alt"></i></a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <?php echo renderEnvironmentChecksHtml(); ?>
+                    </div>
+                </div>
                 <?php endif; ?>
 
             </div>
         </div>
     </div>
 
-    <!-- 自定义确认模态框 -->
+    <!-- 通用确认弹窗 -->
 <div class="modal fade" id="confirmModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">确认删除</h5>
+                <h5 class="modal-title" id="confirmTitle">确认操作</h5>
                 <button type="button" class="close" id="confirmModalClose" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
-                <p id="confirmMessage">确定要删除这个图片链接吗？</p>
+                <p id="confirmMessage" class="mb-0">确定要执行此操作吗？</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" id="confirmModalCancel">取消</button>
-                <button type="button" class="btn btn-danger" id="confirmModalYes">确定删除</button>
+                <button type="button" class="btn btn-primary" id="confirmModalYes">确定</button>
             </div>
         </div>
     </div>
 </div>
+
+<!-- 非阻塞 Toast 通知容器 -->
+<div class="app-toast-container" id="appToasts"></div>
+
+<style>
+.app-toast-container {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 1080;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 380px;
+}
+.app-toast {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 6px;
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    font-size: 14px;
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity .3s ease, transform .3s ease;
+    word-break: break-word;
+}
+.app-toast i { margin-right: 8px; flex-shrink: 0; }
+.app-toast span { flex: 1; }
+/* 移动端表格长文本处理：允许折行，避免长文件名/说明超出卡片撑破界面 */
+.table-responsive { -webkit-overflow-scrolling: touch; }
+.table-wrap-text th,
+.table-wrap-text td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+.table-wrap-text code {
+    word-break: break-all;
+    white-space: normal;
+}
+/* 操作列等不希望折行的单元格（仅在本表中豁免） */
+.table-wrap-text .nowrap { white-space: nowrap; }
+.app-toast-close {
+    margin-left: 10px;
+    padding: 0 2px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: .7;
+}
+.app-toast-close:hover { opacity: 1; }
+.app-toast-success { background: #28a745; }
+.app-toast-info    { background: #17a2b8; }
+.app-toast-warning { background: #ffc107; color: #343a40; }
+.app-toast-error   { background: #dc3545; }
+.app-toast-hide { opacity: 0; transform: translateY(-8px); }
+</style>
 
     <footer class="main-footer">
         <div class="float-right d-none d-sm-inline">
@@ -741,18 +839,64 @@ if ($mustChangePassword && $currentSection !== 'user') {
 <script src="../public/js/adminlte.min.js"></script>
 <!-- 自定义确认模态框处理 -->
 <script>
-var pendingDeleteUrl = '';
-var pendingDeleteType = '';
-var pendingDeleteToken = '';
-var selectedUrls = [];
-
-function showDeleteConfirm(url, type, token) {
-    pendingDeleteUrl = url;
-    pendingDeleteType = type;
-    pendingDeleteToken = token;
-    $('#confirmMessage').text('确定要删除这个图片链接吗？');
-    $('#confirmModal').modal('show');
+// ============================================
+// 非阻塞 Toast 通知
+// ============================================
+function escapeHtml(s) {
+    var div = document.createElement('div');
+    div.textContent = (s == null) ? '' : String(s);
+    return div.innerHTML;
 }
+
+function showToast(message, type) {
+    type = type || 'success';
+    var container = document.getElementById('appToasts');
+    if (!container) return;
+    var icons = { success: 'fa-check-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle', error: 'fa-exclamation-circle' };
+    var t = document.createElement('div');
+    t.className = 'app-toast app-toast-' + type;
+    t.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i><span>' + escapeHtml(message) + '</span>' +
+                  '<button type="button" class="app-toast-close" aria-label="关闭">&times;</button>';
+    container.appendChild(t);
+    var hide = function() {
+        if (!t.parentNode) return;
+        t.classList.add('app-toast-hide');
+        setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
+    };
+    t.querySelector('.app-toast-close').addEventListener('click', hide);
+    setTimeout(hide, 4000);
+}
+
+// ============================================
+// 通用确认弹窗（Promise 化）
+//   confirmDialog({title, message, confirmText, danger}).then(function(ok){ ... })
+// ============================================
+var confirmResolve = null;
+
+function confirmDialog(options) {
+    options = options || {};
+    document.getElementById('confirmTitle').textContent = options.title || '确认操作';
+    document.getElementById('confirmMessage').textContent = options.message || '确定要执行此操作吗？';
+    var yesBtn = document.getElementById('confirmModalYes');
+    yesBtn.textContent = options.confirmText || '确定';
+    yesBtn.className = 'btn ' + (options.danger ? 'btn-danger' : 'btn-primary');
+    return new Promise(function(resolve) {
+        confirmResolve = resolve;
+        $('#confirmModal').modal('show');
+    });
+}
+
+function resolveConfirm(result) {
+    var fn = confirmResolve;
+    confirmResolve = null;
+    $('#confirmModal').modal('hide');
+    if (fn) fn(result);
+}
+
+// ============================================
+// 图片删除：选中状态与通用确认
+// ============================================
+var selectedUrls = [];
 
 function toggleSelectAll() {
     var selectAll = document.getElementById('selectAll');
@@ -779,59 +923,71 @@ function updateDeleteButton() {
     }
 }
 
-function deleteSelected(type, token) {
-    if (selectedUrls.length === 0) return;
-    pendingDeleteUrl = 'MULTI_DELETE';
-    pendingDeleteType = type;
-    pendingDeleteToken = token;
-    $('#confirmMessage').text('确定要删除选中的 ' + selectedUrls.length + ' 个图片链接吗？');
-    $('#confirmModal').modal('show');
+function resetDeleteSelection() {
+    selectedUrls = [];
+    var deleteBtn = document.getElementById('deleteSelectedBtn');
+    if (deleteBtn) deleteBtn.style.display = 'none';
+    var checkboxes = document.querySelectorAll('.url-checkbox');
+    checkboxes.forEach(function(cb) { cb.checked = false; });
+    var selectAll = document.getElementById('selectAll');
+    if (selectAll) selectAll.checked = false;
 }
 
-function executeDelete() {
-    if (pendingDeleteUrl === 'MULTI_DELETE') {
-        var form = document.createElement('form');
-        form.method = 'post';
-        form.action = '?section=management&type=' + encodeURIComponent(pendingDeleteType);
+function submitDeleteForm(url, type, token) {
+    var form = document.createElement('form');
+    form.method = 'post';
+    form.action = '?section=management&type=' + encodeURIComponent(type);
 
-        var csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrf_token';
-        csrfInput.value = pendingDeleteToken;
-        form.appendChild(csrfInput);
+    var csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrf_token';
+    csrfInput.value = token;
+    form.appendChild(csrfInput);
 
-        selectedUrls.forEach(function(url) {
+    if (url === 'MULTI_DELETE') {
+        selectedUrls.forEach(function(u) {
             var input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'delete_urls[]';
-            input.value = url;
+            input.value = u;
             form.appendChild(input);
         });
-
-        document.body.appendChild(form);
-        form.submit();
-    } else if (pendingDeleteUrl) {
+    } else {
         // 单条删除同样使用 POST 表单提交（避免 GET 副作用与 token 泄露）
-        var form = document.createElement('form');
-        form.method = 'post';
-        form.action = '?section=management&type=' + encodeURIComponent(pendingDeleteType);
-
-        var csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrf_token';
-        csrfInput.value = pendingDeleteToken;
-        form.appendChild(csrfInput);
-
         var urlInput = document.createElement('input');
         urlInput.type = 'hidden';
         urlInput.name = 'delete_url';
-        urlInput.value = pendingDeleteUrl;
+        urlInput.value = url;
         form.appendChild(urlInput);
-
-        document.body.appendChild(form);
-        form.submit();
     }
-    $('#confirmModal').modal('hide');
+
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function showDeleteConfirm(url, type, token) {
+    confirmDialog({
+        title: '确认删除',
+        message: '确定要删除这个图片链接吗？此操作不可撤销。',
+        confirmText: '确定删除',
+        danger: true
+    }).then(function(ok) {
+        if (ok) submitDeleteForm(url, type, token);
+        else resetDeleteSelection();
+    });
+}
+
+function deleteSelected(type, token) {
+    if (selectedUrls.length === 0) return;
+    confirmDialog({
+        title: '批量删除',
+        message: '确定要删除选中的 ' + selectedUrls.length + ' 个图片链接吗？此操作不可撤销。',
+        confirmText: '确定删除',
+        danger: true
+    }).then(function(ok) {
+        if (ok) submitDeleteForm('MULTI_DELETE', type, token);
+        else resetDeleteSelection();
+    });
 }
 
 // ============================================
@@ -964,9 +1120,15 @@ function checkUpdate(force) {
 }
 
 function doUpdate() {
-    if (!confirm('确定要执行自动更新吗？此操作将下载并覆盖项目文件。更新过程中请不要关闭页面。')) {
-        return;
-    }
+    confirmDialog({
+        title: '确认更新',
+        message: '确定要执行自动更新吗？此操作将下载并覆盖项目文件。更新过程中请不要关闭页面。',
+        confirmText: '立即更新',
+        danger: false
+    }).then(function(ok) { if (ok) startUpdate(); });
+}
+
+function startUpdate() {
     var btn = document.getElementById('updateBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
@@ -1027,20 +1189,20 @@ function loadBackupList() {
                 box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无备份文件</div>';
                 return;
             }
-            var html = '<table class="table table-striped"><thead><tr><th>文件名</th><th>大小 (KB)</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+            var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>文件名</th><th style="width:80px;">大小 (KB)</th><th style="width:110px;">创建时间</th><th style="width:130px;">操作</th></tr></thead><tbody>';
             data.backups.forEach(function(b) {
                 html += '<tr>';
-                html += '<td><code>' + b.filename + '</code></td>';
+                html += '<td>' + b.filename + '</td>';
                 html += '<td>' + b.size + ' KB</td>';
                 html += '<td>' + b.time + '</td>';
-                html += '<td>';
+                html += '<td class="nowrap">';
                 html += '<button type="button" class="btn btn-sm btn-warning mr-1" onclick="doRollback(\'' + b.filename + '\')">';
                 html += '<i class="fas fa-undo"></i> 恢复</button>';
                 html += '<button type="button" class="btn btn-sm btn-danger" onclick="deleteBackup(\'' + b.filename + '\')">';
                 html += '<i class="fas fa-trash"></i> 删除</button>';
                 html += '</td></tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             box.innerHTML = html;
         })
         .catch(function() {
@@ -1057,7 +1219,7 @@ function loadUpdateHistory() {
                 box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
                 return;
             }
-            var html = '<table class="table table-striped"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
+            var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
             data.logs.forEach(function(log) {
                 var statusClass = 'badge-info';
                 var statusText = log.status;
@@ -1073,7 +1235,7 @@ function loadUpdateHistory() {
                 html += '<td>' + (log.message || '-') + '</td>';
                 html += '</tr>';
             });
-            html += '</tbody></table>';
+            html += '</tbody></table></div>';
             box.innerHTML = html;
         })
         .catch(function() {
@@ -1082,7 +1244,15 @@ function loadUpdateHistory() {
 }
 
 function doRollback(filename) {
-    if (!confirm('确定要从备份文件恢复吗？这将覆盖当前所有文件。此操作不可撤销。')) return;
+    confirmDialog({
+        title: '恢复备份',
+        message: '确定要从备份文件恢复吗？这将覆盖当前所有文件。此操作不可撤销。',
+        confirmText: '确认恢复',
+        danger: true
+    }).then(function(ok) { if (!ok) return; startRollback(filename); });
+}
+
+function startRollback(filename) {
     var formData = new FormData();
     formData.append('action', 'rollback');
     formData.append('backup', filename);
@@ -1091,42 +1261,47 @@ function doRollback(filename) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
-                alert('回滚成功！即将刷新页面...');
+                showToast('回滚成功！即将刷新页面...', 'success');
                 setTimeout(function() { location.reload(); }, 1500);
             } else {
-                alert('回滚失败: ' + (data.error || '未知错误'));
+                showToast('回滚失败: ' + (data.error || '未知错误'), 'error');
             }
         })
         .catch(function(err) {
-            alert('请求失败: ' + err);
+            showToast('请求失败: ' + err, 'error');
         });
 }
 
 // 删除备份文件
 function deleteBackup(filename) {
-    if (!confirm('确定要删除备份文件 "' + filename + '" 吗？此操作不可撤销。')) {
-        return;
-    }
-    var formData = new FormData();
-    formData.append('action', 'delete_backup');
-    formData.append('backup', filename);
-    formData.append('csrf_token', updateCsrfToken);
+    confirmDialog({
+        title: '删除备份',
+        message: '确定要删除备份文件 "' + filename + '" 吗？此操作不可撤销。',
+        confirmText: '确认删除',
+        danger: true
+    }).then(function(ok) {
+        if (!ok) return;
+        var formData = new FormData();
+        formData.append('action', 'delete_backup');
+        formData.append('backup', filename);
+        formData.append('csrf_token', updateCsrfToken);
 
-    fetch('update.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        if (data.success) {
-            alert('备份文件已删除');
-            loadBackupList();
-        } else {
-            alert('删除失败: ' + (data.error || '未知错误'));
-        }
-    })
-    .catch(function(err) {
-        alert('请求失败: ' + err);
+        fetch('update.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                showToast('备份文件已删除', 'success');
+                loadBackupList();
+            } else {
+                showToast('删除失败: ' + (data.error || '未知错误'), 'error');
+            }
+        })
+        .catch(function(err) {
+            showToast('请求失败: ' + err, 'error');
+        });
     });
 }
 
@@ -1171,17 +1346,17 @@ function saveGithubToken() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
-            alert(data.message);
+            showToast(data.message, 'success');
             document.getElementById('githubTokenInput').value = '';
             loadGithubToken();
             // 清除前端缓存，下次检查会获取最新版本信息
             try { localStorage.removeItem(UPDATE_CHECK_LOCAL_CACHE_KEY); } catch (e) {}
         } else {
-            alert('保存失败: ' + (data.error || '未知错误'));
+            showToast('保存失败: ' + (data.error || '未知错误'), 'error');
         }
     })
     .catch(function(err) {
-        alert('请求失败: ' + err);
+        showToast('请求失败: ' + err, 'error');
     })
     .finally(function() {
         document.getElementById('saveTokenBtn').disabled = false;
@@ -1191,11 +1366,16 @@ function saveGithubToken() {
 
 // 清空 GitHub Token
 function clearGithubToken() {
-    if (!confirm('确定要清空 GitHub Token 吗？清空后将使用匿名方式访问 GitHub API。')) {
-        return;
-    }
-    document.getElementById('githubTokenInput').value = '';
-    saveGithubToken();
+    confirmDialog({
+        title: '清空 Token',
+        message: '确定要清空 GitHub Token 吗？清空后将使用匿名方式访问 GitHub API。',
+        confirmText: '确认清空',
+        danger: true
+    }).then(function(ok) {
+        if (!ok) return;
+        document.getElementById('githubTokenInput').value = '';
+        saveGithubToken();
+    });
 }
 
 // 切换 Token 显示/隐藏
@@ -1241,6 +1421,10 @@ function loadSiteSettings() {
             document.getElementById('rate_limit_api').value = data.rate_limit_api || '';
             document.getElementById('rate_limit_admin').value = data.rate_limit_admin || '';
             document.getElementById('image_mode').value = data.image_mode || 'redirect';
+            document.getElementById('enable_json').value = data.enable_json || '0';
+            // 0 是合法值（表示禁用自动落库），不能用 || 兜底，否则会误显示为空
+            var flushInterval = data.stats_auto_flush_interval;
+            document.getElementById('stats_auto_flush_interval').value = (flushInterval === 0 || flushInterval === '0') ? '0' : (flushInterval || '');
         }
     })
     .catch(function() {});
@@ -1266,13 +1450,13 @@ if (siteSettingsForm) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.success) {
-            alert(data.message);
+            showToast(data.message, 'success');
         } else {
-            alert('保存失败: ' + (data.error || '未知错误'));
+            showToast('保存失败: ' + (data.error || '未知错误'), 'error');
         }
     })
     .catch(function(err) {
-        alert('请求失败: ' + err);
+        showToast('请求失败: ' + err, 'error');
     })
     .finally(function() {
         submitBtn.disabled = false;
@@ -1286,33 +1470,23 @@ if (siteSettingsForm) {
 // ============================================
 $(document).ready(function() {
     $('#confirmModalYes').on('click', function() {
-        executeDelete();
+        resolveConfirm(true);
     });
 
     $('#confirmModalCancel').on('click', function() {
-        $('#confirmModal').modal('hide');
+        resolveConfirm(false);
     });
 
     $('#confirmModalClose').on('click', function() {
-        $('#confirmModal').modal('hide');
+        resolveConfirm(false);
     });
 
     $('#confirmModal').on('hidden.bs.modal', function() {
-        pendingDeleteUrl = '';
-        pendingDeleteType = '';
-        pendingDeleteToken = '';
-        selectedUrls = [];
-        var deleteBtn = document.getElementById('deleteSelectedBtn');
-        if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-        var checkboxes = document.querySelectorAll('.url-checkbox');
-        checkboxes.forEach(function(cb) {
-            cb.checked = false;
-        });
-        var selectAll = document.getElementById('selectAll');
-        if (selectAll) {
-            selectAll.checked = false;
+        // 通过 ESC / 点击遮罩关闭而未显式确认时，统一按“取消”处理
+        if (confirmResolve) {
+            var fn = confirmResolve;
+            confirmResolve = null;
+            fn(false);
         }
     });
 });

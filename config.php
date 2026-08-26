@@ -19,6 +19,12 @@ define('DB_FILE', __DIR__ . '/data/app.db');
 define('CACHE_DIR', __DIR__ . '/data/cache');
 define('CACHE_TTL', 300); // 5分钟缓存
 
+// 统计自动落库默认间隔（秒）：作为后台未配置（或配置非法）时的回退默认值。
+// API 写入统计缓冲后，每隔该间隔把缓冲合并进 SQLite，
+// 避免「长期不打开后台」导致首页计数停滞、数据悬在易丢失的缓存文件中。
+// 实际生效值由 getStatsAutoFlushInterval() 读取后台「网站设置」配置，0 表示禁用自动落库。
+define('STATS_AUTO_FLUSH_INTERVAL', 60);
+
 // 会话配置
 define('SESSION_TIMEOUT', 3600); // 会话超时时间(秒)
 
@@ -32,7 +38,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.7'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.2.1.2'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -472,8 +478,39 @@ function validateCsrfToken($token) {
 
 // ==================== 频率限制函数 ====================
 
-// 通用频率限制核心：原子递增 + 超限补偿回退 + 概率化清理过期记录
+// 限流计数是否为内存级（APCu）：单机部署时可用，消除每请求的 SQLite 写锁竞争。
+// ⚠️ 仅限单机：APCu 为共享内存、进程间可见但不跨主机，负载均衡多机时各节点各自计数，
+//    限流会被放大 N 倍，故仅在单机时启用，否则回退到 SQLite 计数。
+function rateLimitCanUseApcu() {
+    return function_exists('apcu_fetch') && is_callable('apcu_inc') && @apcu_enabled();
+}
+
+// 限流入口：优先 APCu 内存计数（内存级、无 SQLite 写），无 APCu 时降级回 SQLite 计数。
+// 限流计数属可丢弃数据（重启/清缓存仅使窗口重新计数），正是内存计数的适用场景。
 function applyRateLimit($key, $maxRequests, $windowSeconds) {
+    if (rateLimitCanUseApcu()) {
+        return applyRateLimitApcu($key, $maxRequests, $windowSeconds);
+    }
+    return applyRateLimitDb($key, $maxRequests, $windowSeconds);
+}
+
+// APCu 固定窗口计数：按时间窗口分桶，窗口过期由 TTL 自动清理，无需手动 DELETE。
+// apcu_inc 为原子操作（跨 PHP-FPM worker），效果等价于锁，且无任何 DB 写。
+function applyRateLimitApcu($key, $maxRequests, $windowSeconds) {
+    // 窗口分桶号，保证同窗口内同一 key 落在同一 bucket
+    $bucket = (int)floor(time() / $windowSeconds);
+    $apcuKey = 'rl:' . $bucket . ':' . md5($key);
+    // apcu_inc(key, step, &success, ttl)：key 首次创建时按 step 计为 1；TTL 留 30s 余量避免窗口抖动误清
+    $count = apcu_inc($apcuKey, 1, $success, $windowSeconds + 30);
+    if ($success) {
+        return $count <= $maxRequests;
+    }
+    // APCu 内部异常：保守放行，避免误封（DB 降级路径会兜底）
+    return true;
+}
+
+// 限流降级路径：SQLite 滑动窗口计数（无 APCu 时使用，保持原有行为）
+function applyRateLimitDb($key, $maxRequests, $windowSeconds) {
     $now = time();
     $windowStart = $now - $windowSeconds;
 
@@ -539,6 +576,30 @@ function getImageAccessMode() {
     return ($mode === 'proxy') ? 'proxy' : 'redirect';
 }
 
+// JSON 格式输出开关（后台可配置，存 app_settings 表，未设置时默认关闭）
+// 开启后可通过 ?format=json 获取图片地址 JSON。
+// 注意：当图片访问模式为「代理模式」时，JSON 会返回真实图片 URL，
+// 从而暴露代理模式本应隐藏的图片链接，仅建议在确认无泄露风险时开启。
+function isJsonEnabled() {
+    return getAppSetting('enable_json', '0') === '1';
+}
+
+// 统计自动落库间隔（后台可配置，存 app_settings 表，未设置时回退到常量默认值）
+// 范围：0 表示禁用自动落库；10 ~ 86400 秒（1天）为有效值，过小会退化为高频写库、过大则近似禁用。
+// 非法值均回退到 STATS_AUTO_FLUSH_INTERVAL 默认值。
+function getStatsAutoFlushInterval() {
+    $raw = getAppSetting('stats_auto_flush_interval', '');
+    // 未配置（空字符串）时回退默认；需区分「未设置」与「显式设为 0 禁用」
+    if ($raw === '') {
+        return STATS_AUTO_FLUSH_INTERVAL;
+    }
+    $v = intval($raw);
+    if ($v === 0) {
+        return 0; // 显式禁用
+    }
+    return ($v >= 10 && $v <= 86400) ? $v : STATS_AUTO_FLUSH_INTERVAL;
+}
+
 function checkApiRateLimit() {
     $ip = md5(getClientIp());
     return applyRateLimit('api_' . $ip, getApiRateLimitMax(), RATE_LIMIT_WINDOW);
@@ -592,7 +653,11 @@ function getImageUrls($type = 'pc', $page = 1, $perPage = 20) {
         ORDER BY id DESC 
         LIMIT ? OFFSET ?
     ");
-    $stmt->execute([$type, $perPage, $offset]);
+    // LIMIT/OFFSET 必须显式绑定为整型，避免部分 SQLite 驱动将字符串参数误判
+    $stmt->bindValue(1, $type, PDO::PARAM_STR);
+    $stmt->bindValue(2, $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(3, $offset, PDO::PARAM_INT);
+    $stmt->execute();
     $urls = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
     return [
@@ -781,12 +846,53 @@ function setCachedImageCount($type, $count) {
 }
 
 function clearCachedImageUrls($type) {
-    // 同时清理旧版全量列表缓存与新版数量缓存，避免升级后残留
-    foreach ([CACHE_DIR . "/{$type}_urls.cache", imageCountCacheFile($type)] as $cacheFile) {
+    // 失效 APCu 内存 id 缓存
+    if (function_exists('apcu_delete') && @apcu_enabled()) {
+        @apcu_delete('imgids:' . $type);
+    }
+    // 同时清理旧版全量列表缓存、数量缓存、旧 maxid 缓存与新的 id 列表缓存，避免增删图后残留
+    foreach ([CACHE_DIR . "/{$type}_urls.cache", CACHE_DIR . "/{$type}_maxid.cache", imageCountCacheFile($type), imageIdListCacheFile($type)] as $cacheFile) {
         if (file_exists($cacheFile)) {
             @unlink($cacheFile);
         }
     }
+}
+
+// 图片 id 列表缓存：随机取图时一次性载入该类型的全部 id，用 array_rand 均匀随机选取。
+// 相比 rowid 范围随机（对 id 空洞敏感、分布不均，会反复命中同一张）更均匀；
+// 相比缓存全量 url 列表（每请求 json_decode 大数组、内存 O(n)）更轻量——id 为 int，
+// 数千条也仅几 KB~几十 KB，解析开销可忽略。
+function imageIdListCacheFile($type) {
+    return CACHE_DIR . "/{$type}_ids.cache";
+}
+
+function getCachedImageIds($type) {
+    // APCu 内存缓存优先：O(1) 无文件 IO（与限流一致，仅 APCu 可用时启用），
+    // 避免每请求 json_decode 缓存文件的耗时
+    $apcuKey = 'imgids:' . $type;
+    if (function_exists('apcu_fetch') && is_callable('apcu_inc') && @apcu_enabled()) {
+        $ids = apcu_fetch($apcuKey);
+        if (is_array($ids) && $ids !== []) {
+            return $ids;
+        }
+    }
+    // 无 APCu 时降级文件缓存
+    $cacheFile = imageIdListCacheFile($type);
+    if (file_exists($cacheFile) && time() - filemtime($cacheFile) < CACHE_TTL) {
+        $ids = @json_decode(@file_get_contents($cacheFile), true);
+        if (is_array($ids) && $ids !== []) {
+            return $ids;
+        }
+    }
+    return null;
+}
+
+function setCachedImageIds($type, $ids, $ttl = CACHE_TTL) {
+    $ids = array_values(array_map('intval', $ids));
+    if (function_exists('apcu_store') && @apcu_enabled()) {
+        @apcu_store('imgids:' . $type, $ids, $ttl);
+    }
+    @file_put_contents(imageIdListCacheFile($type), json_encode($ids));
 }
 
 // ==================== 统计函数 ====================
@@ -856,7 +962,7 @@ function writeCallStatsDirect($date, $isApi, $isPc, $isPe, $isRedirect, $isJson,
     return true;
 }
 
-// 把当日统计缓冲合并进 SQLite 并清空缓冲（在读取统计时调用）
+// 把当日统计缓冲合并进 SQLite 并清空缓冲（在读取统计或自动落库时调用）
 function flushStatsBuffer($date = null) {
     if ($date === null) {
         $date = date('Y-m-d');
@@ -865,9 +971,21 @@ function flushStatsBuffer($date = null) {
     if (!file_exists($file)) {
         return;
     }
+
+    // 与 updateCallCount 使用同一把文件锁，避免「并发写缓冲」与「合并清空缓冲」交错
+    // 导致刚写入的计数被 unlink 丢失。拿不到锁则跳过，留待下次合并。
+    $lockFile = $file . '.lock';
+    $fp = @fopen($lockFile, 'c');
+    if ($fp === false || !flock($fp, LOCK_EX)) {
+        if (is_resource($fp)) fclose($fp);
+        return;
+    }
+
     $buf = readStatsBuffer($date);
     if (($buf['total'] ?? 0) <= 0) {
         @unlink($file);
+        flock($fp, LOCK_UN);
+        fclose($fp);
         return;
     }
     writeCallStatsDirect(
@@ -881,6 +999,9 @@ function flushStatsBuffer($date = null) {
         (int)($buf['total'] ?? 0)
     );
     @unlink($file);
+
+    flock($fp, LOCK_UN);
+    fclose($fp);
 }
 
 // 读取统计前合并所有残留的统计缓冲（含历史日期）。
@@ -936,6 +1057,53 @@ function archiveOldCallStats() {
     $stmt->execute([$cutoff]);
 }
 
+// 按固定间隔自动落库：把统计缓冲合并进 SQLite，避免「长期不打开后台」导致计数滞留缓存而丢失。
+// 使用独立落库锁 + 时间戳标记文件做节流与并发互斥；落库是后台性维护动作，不阻塞 API 响应。
+function autoFlushStatsIfDue() {
+    $interval = getStatsAutoFlushInterval();
+    if ($interval <= 0) {
+        return; // 已在后台禁用自动落库
+    }
+
+    $markerFile = CACHE_DIR . '/stats_flush_marker';
+    $now = time();
+
+    // 快路径：距上次落库未到间隔，直接跳过（无锁，开销极低）
+    if (file_exists($markerFile)) {
+        $last = (int)@file_get_contents($markerFile);
+        if ($last > 0 && ($now - $last) < $interval) {
+            return;
+        }
+    }
+
+    // 慢路径：需要落库，用独立锁防止多个并发请求重复落库
+    $lockFile = CACHE_DIR . '/stats_flush.lock';
+    $fp = @fopen($lockFile, 'c');
+    if ($fp === false || !flock($fp, LOCK_EX | LOCK_NB)) {
+        if (is_resource($fp)) fclose($fp);
+        return; // 已有其他请求在落库，本次跳过
+    }
+
+    // 双重检查：拿到锁后再次校验时间戳，避免阻塞等待期间已被其他请求落库
+    if (file_exists($markerFile)) {
+        $last = (int)@file_get_contents($markerFile);
+        if ($last > 0 && ($now - $last) < $interval) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return;
+        }
+    }
+
+    flushAllStatsBuffers();
+    archiveOldCallStats();
+
+    // 记录本次落库时间
+    @file_put_contents($markerFile, (string)$now);
+
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
 // 统计写入：先更新文件缓冲（低开销，不触碰 SQLite 写锁），读取统计时再合并入库
 function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
     $date = date('Y-m-d');
@@ -969,16 +1137,18 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
 
     flock($fp, LOCK_UN);
     fclose($fp);
+
+    // 按间隔自动落库：让计数即使不打开后台也能及时持久化到 SQLite
+    autoFlushStatsIfDue();
+
     return true;
 }
 
-function getCallCount() {
-    // 读取前先合并当日及所有残留缓冲并归档过期明细
-    flushAllStatsBuffers();
-    archiveOldCallStats();
-
+// 纯查询统计数据（不合并缓冲、不归档，只读操作）。
+// 供公开页面（首页）使用，避免高频访问触发 SQLite 写锁。
+function queryCallStatsData() {
     $db = getDb();
-    
+
     // 获取总调用（SUM 包含 __history__ 归档行，总调用次数永久保留）
     $stmt = $db->prepare("SELECT 
         COALESCE(SUM(total), 0) as total,
@@ -991,7 +1161,7 @@ function getCallCount() {
         FROM call_stats");
     $stmt->execute();
     $totals = $stmt->fetch();
-    
+
     // 获取每日数据（排除历史归档行，仅保留 365 天明细）
     $stmt = $db->prepare("SELECT date, total, pc, pe, api_count FROM call_stats WHERE date != '__history__' ORDER BY date DESC LIMIT 365");
     $stmt->execute();
@@ -1003,7 +1173,7 @@ function getCallCount() {
             'pe' => (int)$row['pe']
         ];
     }
-    
+
     return [
         'total' => (int)$totals['total'],
         'pc' => (int)$totals['pc'],
@@ -1016,6 +1186,21 @@ function getCallCount() {
             'img' => (int)$totals['img_count']
         ]
     ];
+}
+
+// 只读统计：用于公开页面。不合并缓冲、不归档，避免写库。
+// 与 getCallCount 的差异仅在于是否落盘合并缓冲；数据可能滞后于最近几次未合并的缓冲区，
+// 但首页仅用于展示概览，可接受，且后台打开时会触发 getCallCount 完成真正的合并入库。
+function getCallCountReadOnly() {
+    return queryCallStatsData();
+}
+
+function getCallCount() {
+    // 读取前先合并当日及所有残留缓冲并归档过期明细
+    flushAllStatsBuffers();
+    archiveOldCallStats();
+
+    return queryCallStatsData();
 }
 
 function getTotalCalls() {
@@ -1059,33 +1244,46 @@ function getAdminLogs($limit = 100) {
 function getRandomImageUrl($type = 'pc') {
     $db = getDb();
 
-    // 仅缓存数量（O(1) 内存），用随机 OFFSET 取一行，
-    // 避免每次请求读取并 json_decode 全量 URL 列表（内存与解析耗时均为 O(n)）
-    $count = getCachedImageCount($type);
-    if ($count === null) {
-        $count = getImageCount($type);
-        setCachedImageCount($type, $count);
+    // 均匀随机：缓存该类型全部图片 id，array_rand 随机取一个。
+    // 对比 rowid 范围随机（id 空洞时分布不均、反复命中同一张）无空洞偏差、各图等概率；
+    // id 仅为 int 数组，即使几千条也只需几 KB~几十 KB，载入/解析开销可忽略。
+    $ids = getCachedImageIds($type);
+    if ($ids === null) {
+        $ids = loadImageIdList($db, $type);
     }
-    if ($count <= 0) {
+    if (empty($ids)) {
         return false;
     }
 
-    $stmt = $db->prepare("SELECT url FROM image_urls WHERE type = ? LIMIT 1 OFFSET ?");
-    $stmt->execute([$type, mt_rand(0, $count - 1)]);
-    $url = $stmt->fetchColumn();
-
-    // 并发删除可能导致缓存的计数偏大、OFFSET 越界取不到行：
-    // 按实际计数重试一次并刷新计数缓存
-    if ($url === false) {
-        $count = getImageCount($type);
-        if ($count <= 0) {
-            return false;
-        }
-        setCachedImageCount($type, $count);
-        $stmt->execute([$type, mt_rand(0, $count - 1)]);
-        $url = $stmt->fetchColumn();
+    // 抽中已删除的陈旧 id 时（删除图片与随机请求并发、或缓存未及时失效），
+    // 重建 id 列表后重试一次，避免单次 404（与旧版「按实际计数重试一次并刷新计数缓存」等价）。
+    $id = $ids[array_rand($ids)];
+    $url = fetchImageUrlById($db, $id, $type);
+    if ($url !== false) {
+        return $url;
     }
 
+    $ids = loadImageIdList($db, $type);
+    if (empty($ids)) {
+        return false;
+    }
+    $id = $ids[array_rand($ids)];
+    return fetchImageUrlById($db, $id, $type);
+}
+
+// 从数据库载入某类型的全部图片 id 并写入缓存（未命中时重新构建）
+function loadImageIdList($db, $type) {
+    $rows = $db->query("SELECT id FROM image_urls WHERE type = " . $db->quote($type))->fetchAll(PDO::FETCH_ASSOC);
+    $ids = array_values(array_map('intval', array_column($rows, 'id')));
+    setCachedImageIds($type, $ids);
+    return $ids;
+}
+
+// 按 id 与类型取图片 URL（不存在返回 false）
+function fetchImageUrlById($db, $id, $type) {
+    $stmt = $db->prepare("SELECT url FROM image_urls WHERE id = ? AND type = ?");
+    $stmt->execute([$id, $type]);
+    $url = $stmt->fetchColumn();
     return $url !== false ? $url : false;
 }
 
@@ -1284,6 +1482,18 @@ function handleImageApiRequest($type, $countType = null) {
     // 统计沿用原语义：代理计入 img 列，跳转计入 redirect 列
     $returnType = ($mode === 'proxy') ? 'img' : 'redirect';
 
+    // JSON 输出（?format=json）：返回图片地址 JSON，由后台「enable_json」开关控制
+    $jsonRequested = isset($_GET['format']) ? strtolower(trim($_GET['format'])) === 'json' : false;
+    if ($jsonRequested && !isJsonEnabled()) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'error' => 'JSON 格式输出未开启，请先在后台「网站设置」中开启该功能',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     // cache 参数钳制上限（最大 30 天），防止超大值导致时间戳溢出
     $cacheTime = isset($_GET['cache']) ? max(0, min(2592000, intval($_GET['cache']))) : 0;
     $imageUrl = getRandomImageUrl($type);
@@ -1299,25 +1509,46 @@ function handleImageApiRequest($type, $countType = null) {
         $errorMsg = ($type === 'pc') ? '没有找到可用的PC端图片' :
                     (($type === 'pe') ? '没有找到可用的移动端图片' : '没有找到可用的图片');
         http_response_code(404);
-        echo $errorMsg;
+        if ($jsonRequested) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false,
+                'type' => $type,
+                'error' => $errorMsg,
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            echo $errorMsg;
+        }
         exit;
     }
 
     header("Cache-Control: public, max-age=$cacheTime");
     header("Expires: " . gmdate('D, d M Y H:i:s', time() + $cacheTime) . ' GMT');
 
-    // 无缓存模式时添加随机参数避免CDN缓存
-    if ($cacheTime == 0) {
-        try {
-            $randomParam = 'rand=' . bin2hex(random_bytes(8));
-        } catch (Exception $e) {
-            $randomParam = 'rand=' . substr(md5(uniqid((string)mt_rand(), true)), 0, 16);
-        }
-        $imageUrl .= (strpos($imageUrl, '?') === false ? '?' : '&') . $randomParam;
+    // JSON 输出：返回图片地址（受后台开关控制，已在入口校验）。
+    // 注意：无论访问模式是代理还是跳转，这里都返回真实图片 URL，
+    // 因此在代理模式下启用 JSON 会暴露代理模式本应隐藏的图片链接。
+    if ($jsonRequested) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => true,
+            'type'   => $type,
+            'mode'   => $mode,
+            'cache'  => $cacheTime,
+            'url'    => $imageUrl,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
+    // 不再为 URL 追加 rand 随机参数：无论代理还是 302，追加都会破坏上游图片 CDN 的命中，
+    // 导致缓存永不命中、强制回源给源站造成压力。是否缓存由调用方用 cache 参数显式控制。
     if ($mode === 'proxy') {
         // 代理模式：服务器下载图片并转发给用户，隐藏真实图片链接（仍有 SSRF 防护）
+        // 服务器不支持 cURL、或下载失败时，降级为 302 跳转，保证接口始终能出图、不白屏
+        if (!function_exists('curl_init') || !function_exists('curl_exec')) {
+            header("Location: $imageUrl");
+            exit;
+        }
         $imageData = fetchRemoteImage($imageUrl);
         if ($imageData) {
             $imageInfo = @getimagesizefromstring($imageData);
@@ -1328,8 +1559,8 @@ function handleImageApiRequest($type, $countType = null) {
             }
             echo $imageData;
         } else {
-            http_response_code(404);
-            echo '无法获取图片';
+            // 下载失败：降级为 302 跳转出图，避免返回 404/白屏
+            header("Location: $imageUrl");
         }
     } else {
         // 302 跳转模式（默认）：直接重定向到真实图片 URL
@@ -1530,6 +1761,234 @@ function checkUpdateEnvironment() {
         'errors' => $errors,
         'warnings' => $warnings,
     ];
+}
+
+// 检测本地环境（运行环境 + 依赖扩展 + 关键目录），供后台「环境检测」页面展示。
+// 返回结构化结果便于前端渲染：environment 为环境信息，checks 为逐项依赖检查清单。
+function getLocalEnvironmentChecks() {
+    $checks = [];
+
+    // ---------- 必需扩展 / 运行时 ----------
+    $checks[] = [
+        'name' => 'php_version',
+        'label' => 'PHP 版本',
+        'required' => PHP_VERSION_ID >= 70400,
+        'ok' => PHP_VERSION_ID >= 70400,
+        'detail' => '当前 PHP ' . PHP_VERSION . '（要求 ≥ 7.4）',
+        'group' => '必需',
+    ];
+    $checks[] = [
+        'name' => 'pdo_sqlite',
+        'label' => 'PDO SQLite',
+        'required' => true,
+        'ok' => extension_loaded('pdo_sqlite'),
+        'detail' => extension_loaded('pdo_sqlite') ? '已启用：数据库存储依赖此扩展' : '未启用：数据无法存储，应用无法工作',
+        'group' => '必需',
+    ];
+    $checks[] = [
+        'name' => 'session',
+        'label' => 'Session 会话',
+        'required' => true,
+        'ok' => function_exists('session_start'),
+        'detail' => function_exists('session_start') ? '已启用：后台登录依赖' : '未启用：管理后台无法登录',
+        'group' => '必需',
+    ];
+    $checks[] = [
+        'name' => 'json',
+        'label' => 'JSON 扩展',
+        'required' => true,
+        'ok' => function_exists('json_encode'),
+        'detail' => function_exists('json_encode') ? '已启用' : '未启用：统计缓冲与 JSON 输出不可用',
+        'group' => '必需',
+    ];
+    $checks[] = [
+        'name' => 'hash',
+        'label' => 'Hash 扩展',
+        'required' => true,
+        'ok' => function_exists('hash_equals'),
+        'detail' => function_exists('hash_equals') ? '已启用：用于密码与 CSRF 校验' : '未启用：安全校验不可用',
+        'group' => '必需',
+    ];
+
+    // ---------- 功能依赖（缺失时对应功能受限，但应用仍可运行） ----------
+    $curlOk = function_exists('curl_init') && function_exists('curl_exec');
+    $checks[] = [
+        'name' => 'curl',
+        'label' => 'cURL',
+        'required' => false,
+        'ok' => $curlOk,
+        'detail' => $curlOk
+            ? '已启用：支持代理出图与自动更新下载'
+            : '未启用：代理模式将降级为 302 跳转，自动更新不可用（可考虑开启 allow_url_fopen）',
+        'group' => '功能',
+    ];
+    $checks[] = [
+        'name' => 'zip',
+        'label' => 'ZIP 扩展',
+        'required' => false,
+        'ok' => extension_loaded('zip'),
+        'detail' => extension_loaded('zip')
+            ? '已启用：支持自动更新解压'
+            : '未启用：自动更新功能不可用，仅影响更新',
+        'group' => '功能',
+    ];
+    $checks[] = [
+        'name' => 'apcu',
+        'label' => 'APCu（可选）',
+        'required' => false,
+        'ok' => function_exists('apcu_fetch') && @apcu_enabled(),
+        'detail' => (function_exists('apcu_fetch') && @apcu_enabled())
+            ? '已启用：限流使用内存计数，降低 SQLite 写压力（仅单机有效）'
+            : '未启用：限流回退为 SQLite 计数。装 APCu 可在高并发下提升性能',
+        'group' => '推荐',
+    ];
+
+    // ---------- 关键目录可写 ----------
+    $dirs = [
+        __DIR__ . '/data' => '数据目录 (data/)',
+        CACHE_DIR => '缓存目录 (data/cache/)',
+        UPDATE_BACKUP_DIR => '备份目录 (data/backups/)',
+        UPDATE_CACHE_DIR => '更新缓存 (data/update_cache/)',
+        __DIR__ . '/admin/logs' => '日志目录 (admin/logs/)',
+    ];
+    foreach ($dirs as $dir => $label) {
+        $writable = isDirReallyWritable($dir);
+        $checks[] = [
+            'name' => 'dir_' . $dir,
+            'label' => $label,
+            'required' => true,
+            'ok' => $writable,
+            'detail' => $writable
+                ? '可写'
+                : '不可写：需授予写入权限（避免使用 chmod 777，建议调整属主为 Web 运行账户）',
+            'group' => '目录',
+        ];
+    }
+
+    // ---------- 环境信息（只读展示） ----------
+    $db = null;
+    $sqliteVersion = '';
+    try {
+        $dbVersion = @getDb()->query('SELECT sqlite_version()');
+        $sqliteVersion = $dbVersion ? (string)$dbVersion->fetchColumn() : '';
+    } catch (Exception $e) {
+        $sqliteVersion = '';
+    }
+    $freeSpace = @disk_free_space(__DIR__);
+    $environment = [
+        'php_version' => PHP_VERSION . '（' . PHP_SAPI . '）',
+        'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? '未知',
+        'sqlite_version' => $sqliteVersion !== '' ? $sqliteVersion : '不可用',
+        'memory_limit' => ini_get('memory_limit'),
+        'upload_max_filesize' => ini_get('upload_max_filesize'),
+        'post_max_size' => ini_get('post_max_size'),
+        'max_execution_time' => ini_get('max_execution_time') ? ini_get('max_execution_time') . 's' : '不限(0)',
+        'timezone' => date_default_timezone_get(),
+    ];
+
+    return [
+        'environment' => $environment,
+        'checks' => $checks,
+    ];
+}
+
+// 渲染「环境检测」完整 HTML（运行环境表 + 依赖与目录检测表）。
+// 供后台「环境检测」页与「系统更新 → 环境明细」复用，避免重复渲染逻辑。
+function renderEnvironmentChecksHtml() {
+    $envData = getLocalEnvironmentChecks();
+    $envLabels = [
+        'php_version' => 'PHP 版本',
+        'server_software' => '服务器软件',
+        'sqlite_version' => 'SQLite 版本',
+        'memory_limit' => '内存限制 (memory_limit)',
+        'upload_max_filesize' => '上传大小限制',
+        'post_max_size' => 'POST 请求限制',
+        'max_execution_time' => '执行时间限制',
+        'timezone' => '时区',
+    ];
+
+    ob_start();
+    ?>
+    <!-- 运行环境信息 -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">运行环境</h3>
+        </div>
+        <div class="card-body">
+            <table class="table table-bordered table-striped">
+                <tbody>
+                <?php foreach ($envData['environment'] as $key => $value): ?>
+                    <tr>
+                        <th style="width:220px;"><?php echo htmlspecialchars($envLabels[$key] ?? $key, ENT_QUOTES); ?></th>
+                        <td><?php echo htmlspecialchars((string)$value, ENT_QUOTES); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 依赖与目录检测 -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">依赖与目录检测</h3>
+        </div>
+        <div class="card-body">
+            <?php
+            $failed = array_filter($envData['checks'], function ($c) { return !$c['ok']; });
+            $grouped = [];
+            foreach ($envData['checks'] as $c) {
+                $grouped[$c['group']][] = $c;
+            }
+            ?>
+            <?php if (empty($failed)): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> 所有必需项均满足，环境正常。
+                </div>
+            <?php else: ?>
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> 有 <?php echo count($failed); ?> 项未通过，请参考下表逐项处理。
+                </div>
+            <?php endif; ?>
+
+            <?php foreach ($grouped as $group => $items): ?>
+                <h6 class="text-muted mb-3"><?php echo htmlspecialchars($group, ENT_QUOTES); ?></h6>
+                <table class="table table-bordered table-striped mb-4">
+                    <thead>
+                    <tr>
+                        <th style="width:40px;"><i class="fas fa-exchange-alt"></i></th>
+                        <th style="width:220px;">项目</th>
+                        <th>说明</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($items as $c): ?>
+                        <tr>
+                            <td class="text-center">
+                                <?php if ($c['ok']): ?>
+                                    <i class="fas fa-check-circle text-success" title="通过"></i>
+                                <?php else: ?>
+                                    <i class="fas fa-times-circle text-danger" title="未通过"></i>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php echo htmlspecialchars($c['label'], ENT_QUOTES); ?>
+                                <?php if ($c['required']): ?>
+                                    <span class="badge badge-danger">必需</span>
+                                <?php else: ?>
+                                    <span class="badge badge-secondary">可选</span>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo htmlspecialchars($c['detail'], ENT_QUOTES); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endforeach; ?>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
 }
 
 // 判断路径是否受保护（不会被更新覆盖
