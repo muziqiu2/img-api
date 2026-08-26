@@ -225,6 +225,12 @@ if ($mustChangePassword && $currentSection !== 'user') {
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="?section=environment" class="nav-link <?php echo $currentSection === 'environment' ? 'active' : ''; ?>">
+                            <i class="nav-icon fas fa-stethoscope"></i>
+                            <p>环境检测</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="logout.php" class="nav-link">
                             <i class="nav-icon fas fa-sign-out-alt"></i>
                             <p>退出登录</p>
@@ -248,6 +254,7 @@ if ($mustChangePassword && $currentSection !== 'user') {
                             elseif ($currentSection === 'user') echo '用户设置';
                             elseif ($currentSection === 'site') echo '网站设置';
                             elseif ($currentSection === 'update') echo '系统更新';
+                            elseif ($currentSection === 'environment') echo '环境检测';
                             ?>
                         </h1>
                     </div>
@@ -579,6 +586,99 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 <i class="fas fa-save"></i> 保存设置
                             </button>
                         </form>
+                    </div>
+                </div>
+
+                <?php elseif ($currentSection === 'environment'): ?>
+                <?php
+                $envData = getLocalEnvironmentChecks();
+                $envLabels = [
+                    'php_version' => 'PHP 版本',
+                    'server_software' => '服务器软件',
+                    'sqlite_version' => 'SQLite 版本',
+                    'memory_limit' => '内存限制 (memory_limit)',
+                    'upload_max_filesize' => '上传大小限制',
+                    'post_max_size' => 'POST 请求限制',
+                    'max_execution_time' => '执行时间限制',
+                    'timezone' => '时区',
+                ];
+                ?>
+                <!-- 运行环境信息 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">运行环境</h3>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-bordered table-striped">
+                            <tbody>
+                            <?php foreach ($envData['environment'] as $key => $value): ?>
+                                <tr>
+                                    <th style="width:220px;"><?php echo htmlspecialchars($envLabels[$key] ?? $key, ENT_QUOTES); ?></th>
+                                    <td><?php echo htmlspecialchars((string)$value, ENT_QUOTES); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 依赖与目录检测 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">依赖与目录检测</h3>
+                    </div>
+                    <div class="card-body">
+                        <?php
+                        $failed = array_filter($envData['checks'], function ($c) { return !$c['ok']; });
+                        $grouped = [];
+                        foreach ($envData['checks'] as $c) {
+                            $grouped[$c['group']][] = $c;
+                        }
+                        ?>
+                        <?php if (empty($failed)): ?>
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle"></i> 所有必需项均满足，环境正常。
+                            </div>
+                        <?php else: ?>
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle"></i> 有 <?php echo count($failed); ?> 项未通过，请参考下表逐项处理。
+                            </div>
+                        <?php endif; ?>
+
+                        <?php foreach ($grouped as $group => $items): ?>
+                            <h6 class="text-muted mb-3"><?php echo htmlspecialchars($group, ENT_QUOTES); ?></h6>
+                            <table class="table table-bordered table-striped mb-4">
+                                <thead>
+                                <tr>
+                                    <th style="width:40px;"><i class="fas fa-exchange-alt"></i></th>
+                                    <th style="width:220px;">项目</th>
+                                    <th>说明</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <?php foreach ($items as $c): ?>
+                                    <tr>
+                                        <td class="text-center">
+                                            <?php if ($c['ok']): ?>
+                                                <i class="fas fa-check-circle text-success" title="通过"></i>
+                                            <?php else: ?>
+                                                <i class="fas fa-times-circle text-danger" title="未通过"></i>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php echo htmlspecialchars($c['label'], ENT_QUOTES); ?>
+                                            <?php if ($c['required']): ?>
+                                                <span class="badge badge-danger">必需</span>
+                                            <?php else: ?>
+                                                <span class="badge badge-secondary">可选</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($c['detail'], ENT_QUOTES); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php endforeach; ?>
                     </div>
                 </div>
 
