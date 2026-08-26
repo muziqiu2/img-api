@@ -38,7 +38,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.2.1.2'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.2.1.3'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -411,7 +411,33 @@ function getRemainingAttempts() {
 
 // ==================== 应用设置函数 ====================
 
+// app_settings 的 APCu 缓存 key。设置项多在高频路径读取（image_mode/rate_limit/enable_json…），
+// 用短 TTL 缓存消除每请求的 SQLite 查询；后台写入时调 clearAppSettingCache 及时失效。
+function appSettingCacheKey($key) {
+    return 'appset:' . sha1($key);
+}
+
+function clearAppSettingCache($key) {
+    if (function_exists('apcu_delete') && @apcu_enabled()) {
+        @apcu_delete(appSettingCacheKey($key));
+    }
+}
+
 function getAppSetting($key, $default = '') {
+    if (function_exists('apcu_fetch') && @apcu_enabled()) {
+        $cacheKey = appSettingCacheKey($key);
+        if (apcu_exists($cacheKey)) {
+            return apcu_fetch($cacheKey);
+        }
+        $db = getDb();
+        $stmt = $db->prepare("SELECT value FROM app_settings WHERE key = ?");
+        $stmt->execute([$key]);
+        $result = $stmt->fetch();
+        $value = $result ? ($result['value'] ?? $default) : $default;
+        // 短暂缓存（30 秒），兼顾读性能与后台改动的及时生效
+        @apcu_store($cacheKey, $value, 30);
+        return $value;
+    }
     $db = getDb();
     $stmt = $db->prepare("SELECT value FROM app_settings WHERE key = ?");
     $stmt->execute([$key]);
@@ -420,12 +446,14 @@ function getAppSetting($key, $default = '') {
 }
 
 function setAppSetting($key, $value) {
+    clearAppSettingCache($key); // 写入前失效旧缓存，避免读到过期值
     $db = getDb();
     $stmt = $db->prepare("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)");
     return $stmt->execute([$key, $value]);
 }
 
 function deleteAppSetting($key) {
+    clearAppSettingCache($key);
     $db = getDb();
     $stmt = $db->prepare("DELETE FROM app_settings WHERE key = ?");
     return $stmt->execute([$key]);
@@ -962,6 +990,53 @@ function writeCallStatsDirect($date, $isApi, $isPc, $isPe, $isRedirect, $isJson,
     return true;
 }
 
+// ============ 统计：APCu 内存计数（单机可选，消除每请求文件锁+整文件重写 I/O） ============
+
+// 全部统计列字段名（file/APCu/SQLite 三处保持一致）
+function statsFields() {
+    return ['total', 'pc', 'pe', 'api', 'redirect', 'json', 'img'];
+}
+
+// APCu 统计计数 key（按日期分桶，跨日互不干扰）
+function statsApcuKey($field, $date = null) {
+    if ($date === null) {
+        $date = date('Y-m-d');
+    }
+    return 'stats:' . $date . ':' . $field;
+}
+
+// 统计是否可用 APCu 内存计数（单机、启用 apcu 扩展时）
+function statsCanUseApcu() {
+    return function_exists('apcu_fetch') && is_callable('apcu_inc') && @apcu_enabled();
+}
+
+// 读取并清空指定日期的 APCu 统计计数；仅清存量>0 的计数器，避免清掉并发新加的数据
+function takeStatsApcu($date) {
+    $delta = ['total' => 0, 'pc' => 0, 'pe' => 0, 'api' => 0, 'redirect' => 0, 'json' => 0, 'img' => 0];
+    foreach ($delta as $f => $v) {
+        $c = (int)@apcu_fetch(statsApcuKey($f, $date));
+        if ($c > 0) {
+            $delta[$f] = $c;
+            @apcu_delete(statsApcuKey($f, $date));
+        }
+    }
+    return $delta;
+}
+
+// 把 APCu 内存计数合并进 SQLite 并清空（今日+昨日，覆盖滚动日界可能残留的旧日期 key）
+function flushStatsApcu() {
+    if (!statsCanUseApcu()) {
+        return;
+    }
+    foreach ([date('Y-m-d'), date('Y-m-d', strtotime('-1 day'))] as $date) {
+        $d = takeStatsApcu($date);
+        if (($d['total'] ?? 0) <= 0) {
+            continue;
+        }
+        writeCallStatsDirect($date, $d['api'], $d['pc'], $d['pe'], $d['redirect'], $d['json'], $d['img'], $d['total']);
+    }
+}
+
 // 把当日统计缓冲合并进 SQLite 并清空缓冲（在读取统计或自动落库时调用）
 function flushStatsBuffer($date = null) {
     if ($date === null) {
@@ -1007,6 +1082,7 @@ function flushStatsBuffer($date = null) {
 // 读取统计前合并所有残留的统计缓冲（含历史日期）。
 // 若某天有调用但之后一直无人触发统计读取，缓冲文件会残留，此处兜底合并，避免数据永久丢失。
 function flushAllStatsBuffers() {
+    flushStatsApcu(); // APCu 内存计数（若有）
     $files = glob(CACHE_DIR . '/call_stats_*.json');
     if ($files === false) return;
     foreach ($files as $file) {
@@ -1116,7 +1192,24 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
     $isJson = ($returnType === 'json') ? 1 : 0;
     $isImg = ($returnType === 'img') ? 1 : 0;
 
-    // 文件缓冲：flock 锁文件保护临界区，数据用 tmp+rename 原子写入
+    // APCu 内存计数（首选）：apcu_inc 原子递增，热路径无文件锁、无整文件重写、无 SQLite 写锁。
+    // 计数属于「可延迟」数据，由 autoFlushStatsIfDue 按固定间隔落库持久化，重启丢失范围极小。
+    if (statsCanUseApcu()) {
+        // TTL 覆盖 2 天窗口：即使跨日滚动、偶发数天无人触发落库，计数也不至于提前过期
+        $ttl = 86400 * 2 + 3600;
+        apcu_inc(statsApcuKey('total', $date), 1, $ok1, $ttl);
+        if ($isPc) apcu_inc(statsApcuKey('pc', $date), 1, $ok2, $ttl);
+        if ($isPe) apcu_inc(statsApcuKey('pe', $date), 1, $ok3, $ttl);
+        if ($isApi) apcu_inc(statsApcuKey('api', $date), 1, $ok4, $ttl);
+        if ($isRedirect) apcu_inc(statsApcuKey('redirect', $date), 1, $ok5, $ttl);
+        if ($isJson) apcu_inc(statsApcuKey('json', $date), 1, $ok6, $ttl);
+        if ($isImg) apcu_inc(statsApcuKey('img', $date), 1, $ok7, $ttl);
+        // 按间隔自动落库：让计数即使不打开后台也能及时持久化到 SQLite
+        autoFlushStatsIfDue();
+        return true;
+    }
+
+    // 无 APCu 回退：文件缓冲（flock 锁文件保护临界区，数据用 tmp+rename 原子写入）
     $lockFile = statsBufferFile($date) . '.lock';
     $fp = @fopen($lockFile, 'c');
     if ($fp === false || !flock($fp, LOCK_EX)) {
