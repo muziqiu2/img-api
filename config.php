@@ -1306,18 +1306,15 @@ function handleImageApiRequest($type, $countType = null) {
     header("Cache-Control: public, max-age=$cacheTime");
     header("Expires: " . gmdate('D, d M Y H:i:s', time() + $cacheTime) . ' GMT');
 
-    // 无缓存模式时添加随机参数避免CDN缓存
-    if ($cacheTime == 0) {
-        try {
-            $randomParam = 'rand=' . bin2hex(random_bytes(8));
-        } catch (Exception $e) {
-            $randomParam = 'rand=' . substr(md5(uniqid((string)mt_rand(), true)), 0, 16);
-        }
-        $imageUrl .= (strpos($imageUrl, '?') === false ? '?' : '&') . $randomParam;
-    }
-
+    // 不再为 URL 追加 rand 随机参数：无论代理还是 302，追加都会破坏上游图片 CDN 的命中，
+    // 导致缓存永不命中、强制回源给源站造成压力。是否缓存由调用方用 cache 参数显式控制。
     if ($mode === 'proxy') {
         // 代理模式：服务器下载图片并转发给用户，隐藏真实图片链接（仍有 SSRF 防护）
+        // 服务器不支持 cURL、或下载失败时，降级为 302 跳转，保证接口始终能出图、不白屏
+        if (!function_exists('curl_init') || !function_exists('curl_exec')) {
+            header("Location: $imageUrl");
+            exit;
+        }
         $imageData = fetchRemoteImage($imageUrl);
         if ($imageData) {
             $imageInfo = @getimagesizefromstring($imageData);
@@ -1328,8 +1325,8 @@ function handleImageApiRequest($type, $countType = null) {
             }
             echo $imageData;
         } else {
-            http_response_code(404);
-            echo '无法获取图片';
+            // 下载失败：降级为 302 跳转出图，避免返回 404/白屏
+            header("Location: $imageUrl");
         }
     } else {
         // 302 跳转模式（默认）：直接重定向到真实图片 URL
