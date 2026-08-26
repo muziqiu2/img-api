@@ -32,7 +32,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.1.7.2'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.1.8'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -600,7 +600,11 @@ function getImageUrls($type = 'pc', $page = 1, $perPage = 20) {
         ORDER BY id DESC 
         LIMIT ? OFFSET ?
     ");
-    $stmt->execute([$type, $perPage, $offset]);
+    // LIMIT/OFFSET 必须显式绑定为整型，避免部分 SQLite 驱动将字符串参数误判
+    $stmt->bindValue(1, $type, PDO::PARAM_STR);
+    $stmt->bindValue(2, $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(3, $offset, PDO::PARAM_INT);
+    $stmt->execute();
     $urls = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
     return [
@@ -980,13 +984,11 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
     return true;
 }
 
-function getCallCount() {
-    // 读取前先合并当日及所有残留缓冲并归档过期明细
-    flushAllStatsBuffers();
-    archiveOldCallStats();
-
+// 纯查询统计数据（不合并缓冲、不归档，只读操作）。
+// 供公开页面（首页）使用，避免高频访问触发 SQLite 写锁。
+function queryCallStatsData() {
     $db = getDb();
-    
+
     // 获取总调用（SUM 包含 __history__ 归档行，总调用次数永久保留）
     $stmt = $db->prepare("SELECT 
         COALESCE(SUM(total), 0) as total,
@@ -999,7 +1001,7 @@ function getCallCount() {
         FROM call_stats");
     $stmt->execute();
     $totals = $stmt->fetch();
-    
+
     // 获取每日数据（排除历史归档行，仅保留 365 天明细）
     $stmt = $db->prepare("SELECT date, total, pc, pe, api_count FROM call_stats WHERE date != '__history__' ORDER BY date DESC LIMIT 365");
     $stmt->execute();
@@ -1011,7 +1013,7 @@ function getCallCount() {
             'pe' => (int)$row['pe']
         ];
     }
-    
+
     return [
         'total' => (int)$totals['total'],
         'pc' => (int)$totals['pc'],
@@ -1024,6 +1026,21 @@ function getCallCount() {
             'img' => (int)$totals['img_count']
         ]
     ];
+}
+
+// 只读统计：用于公开页面。不合并缓冲、不归档，避免写库。
+// 与 getCallCount 的差异仅在于是否落盘合并缓冲；数据可能滞后于最近几次未合并的缓冲区，
+// 但首页仅用于展示概览，可接受，且后台打开时会触发 getCallCount 完成真正的合并入库。
+function getCallCountReadOnly() {
+    return queryCallStatsData();
+}
+
+function getCallCount() {
+    // 读取前先合并当日及所有残留缓冲并归档过期明细
+    flushAllStatsBuffers();
+    archiveOldCallStats();
+
+    return queryCallStatsData();
 }
 
 function getTotalCalls() {

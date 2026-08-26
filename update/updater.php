@@ -1092,11 +1092,12 @@ class AppUpdater
         }
 
         // file_get_contents 备用
+        $githubToken = getGithubToken();
         $context = stream_context_create([
             'http' => [
                 'timeout' => 30,
                 'user_agent' => 'AppUpdater/1.0',
-                'header' => !empty(GITHUB_TOKEN) ? "Authorization: token " . GITHUB_TOKEN . "\r\n" : '',
+                'header' => !empty($githubToken) ? "Authorization: token " . $githubToken . "\r\n" : '',
             ],
             'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
         ]);

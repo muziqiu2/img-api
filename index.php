@@ -8,10 +8,10 @@ $site = getSiteSettings();
 $appVersion = ltrim(getAppVersion(), 'v');
 $repoUrl = 'https://github.com/' . GITHUB_REPO_OWNER . '/' . GITHUB_REPO_NAME;
 
-// 统计数据只查询一次并在全页复用：
-// getCallCount/getTotalCalls 每次调用都会合并统计缓冲（SQLite 写）并做归档检查，
-// 重复调用既是重复开销，也会让"文件缓冲减少写锁"的设计在高频访问下失效
-$stats = getCallCount();
+// 统计数据只查询一次并在全页复用。
+// 首页是公开高频页面，使用只读统计（不合并缓冲、不写库），
+// 避免每次访问都触发 SQLite 写锁与归档检查；缓冲合并由后台 getCallCount 完成。
+$stats = getCallCountReadOnly();
 
 // JSON 输出开关与图片访问模式（与后台设置保持一致）
 $jsonEnabled = isJsonEnabled();
