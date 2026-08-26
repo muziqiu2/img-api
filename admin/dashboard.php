@@ -548,6 +548,14 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                 </select>
                                 <small class="form-text text-muted">代理模式：所有 API（api.php/pc.php/pe.php）由服务器代为下载并转发图片，用户无法看到真实图片 URL，可隐藏图片链接；302 跳转模式：API 直接重定向到真实图片 URL。此设置对全部 API 生效，调用方传参不再影响返回方式。</small>
                             </div>
+                            <div class="form-group">
+                                <label for="enable_json">JSON 格式输出</label>
+                                <select class="form-control" id="enable_json" name="enable_json">
+                                    <option value="0">关闭（默认）</option>
+                                    <option value="1">开启</option>
+                                </select>
+                                <small class="form-text text-warning">开启后，可在 api.php/pc.php/pe.php 后加 <code>?format=json</code> 返回图片地址的 JSON 数据。注意：当「图片访问模式」为代理模式时，JSON 会返回真实的图片 URL，从而暴露代理模式本应隐藏的图片链接，请仅在确认无泄露风险时开启。</small>
+                            </div>
                             <hr>
                             <h6 class="text-muted mb-3">频率限制设置</h6>
                             <div class="form-group">
@@ -1241,6 +1249,7 @@ function loadSiteSettings() {
             document.getElementById('rate_limit_api').value = data.rate_limit_api || '';
             document.getElementById('rate_limit_admin').value = data.rate_limit_admin || '';
             document.getElementById('image_mode').value = data.image_mode || 'redirect';
+            document.getElementById('enable_json').value = data.enable_json || '0';
         }
     })
     .catch(function() {});

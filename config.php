@@ -539,6 +539,14 @@ function getImageAccessMode() {
     return ($mode === 'proxy') ? 'proxy' : 'redirect';
 }
 
+// JSON 格式输出开关（后台可配置，存 app_settings 表，未设置时默认关闭）
+// 开启后可通过 ?format=json 获取图片地址 JSON。
+// 注意：当图片访问模式为「代理模式」时，JSON 会返回真实图片 URL，
+// 从而暴露代理模式本应隐藏的图片链接，仅建议在确认无泄露风险时开启。
+function isJsonEnabled() {
+    return getAppSetting('enable_json', '0') === '1';
+}
+
 function checkApiRateLimit() {
     $ip = md5(getClientIp());
     return applyRateLimit('api_' . $ip, getApiRateLimitMax(), RATE_LIMIT_WINDOW);
@@ -1284,6 +1292,18 @@ function handleImageApiRequest($type, $countType = null) {
     // 统计沿用原语义：代理计入 img 列，跳转计入 redirect 列
     $returnType = ($mode === 'proxy') ? 'img' : 'redirect';
 
+    // JSON 输出（?format=json）：返回图片地址 JSON，由后台「enable_json」开关控制
+    $jsonRequested = isset($_GET['format']) ? strtolower(trim($_GET['format'])) === 'json' : false;
+    if ($jsonRequested && !isJsonEnabled()) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'error' => 'JSON 格式输出未开启，请先在后台「网站设置」中开启该功能',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     // cache 参数钳制上限（最大 30 天），防止超大值导致时间戳溢出
     $cacheTime = isset($_GET['cache']) ? max(0, min(2592000, intval($_GET['cache']))) : 0;
     $imageUrl = getRandomImageUrl($type);
@@ -1299,12 +1319,36 @@ function handleImageApiRequest($type, $countType = null) {
         $errorMsg = ($type === 'pc') ? '没有找到可用的PC端图片' :
                     (($type === 'pe') ? '没有找到可用的移动端图片' : '没有找到可用的图片');
         http_response_code(404);
-        echo $errorMsg;
+        if ($jsonRequested) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success' => false,
+                'type' => $type,
+                'error' => $errorMsg,
+            ], JSON_UNESCAPED_UNICODE);
+        } else {
+            echo $errorMsg;
+        }
         exit;
     }
 
     header("Cache-Control: public, max-age=$cacheTime");
     header("Expires: " . gmdate('D, d M Y H:i:s', time() + $cacheTime) . ' GMT');
+
+    // JSON 输出：返回图片地址（受后台开关控制，已在入口校验）。
+    // 注意：无论访问模式是代理还是跳转，这里都返回真实图片 URL，
+    // 因此在代理模式下启用 JSON 会暴露代理模式本应隐藏的图片链接。
+    if ($jsonRequested) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => true,
+            'type'   => $type,
+            'mode'   => $mode,
+            'cache'  => $cacheTime,
+            'url'    => $imageUrl,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     // 不再为 URL 追加 rand 随机参数：无论代理还是 302，追加都会破坏上游图片 CDN 的命中，
     // 导致缓存永不命中、强制回源给源站造成压力。是否缓存由调用方用 cache 参数显式控制。

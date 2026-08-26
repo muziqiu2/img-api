@@ -277,6 +277,7 @@ try {
             $settings['rate_limit_api'] = getApiRateLimitMax();
             $settings['rate_limit_admin'] = getAdminRateLimitMax();
             $settings['image_mode'] = getImageAccessMode();
+            $settings['enable_json'] = isJsonEnabled() ? '1' : '0';
             echo json_encode(array_merge(['success' => true], $settings), JSON_UNESCAPED_UNICODE);
             break;
 
@@ -315,6 +316,10 @@ try {
             if ($imageMode === 'proxy' || $imageMode === 'redirect') {
                 setAppSetting('image_mode', $imageMode);
             }
+
+            // JSON 输出开关保存（仅接受 1/0，默认关闭）
+            $enableJson = isset($_POST['enable_json']) ? trim($_POST['enable_json']) : '0';
+            setAppSetting('enable_json', ($enableJson === '1') ? '1' : '0');
 
             logAdminAction('更新了网站展示设置');
             echo json_encode(['success' => true, 'message' => '网站设置已保存'], JSON_UNESCAPED_UNICODE);
