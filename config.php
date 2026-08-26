@@ -19,6 +19,10 @@ define('DB_FILE', __DIR__ . '/data/app.db');
 define('CACHE_DIR', __DIR__ . '/data/cache');
 define('CACHE_TTL', 300); // 5分钟缓存
 
+// 统计自动落库间隔（秒）：API 写入统计缓冲后，每隔该间隔把缓冲合并进 SQLite，
+// 避免「长期不打开后台」导致首页计数停滞、数据悬在易丢失的缓存文件中。0 表示禁用自动落库。
+define('STATS_AUTO_FLUSH_INTERVAL', 60);
+
 // 会话配置
 define('SESSION_TIMEOUT', 3600); // 会话超时时间(秒)
 
@@ -868,7 +872,7 @@ function writeCallStatsDirect($date, $isApi, $isPc, $isPe, $isRedirect, $isJson,
     return true;
 }
 
-// 把当日统计缓冲合并进 SQLite 并清空缓冲（在读取统计时调用）
+// 把当日统计缓冲合并进 SQLite 并清空缓冲（在读取统计或自动落库时调用）
 function flushStatsBuffer($date = null) {
     if ($date === null) {
         $date = date('Y-m-d');
@@ -877,9 +881,21 @@ function flushStatsBuffer($date = null) {
     if (!file_exists($file)) {
         return;
     }
+
+    // 与 updateCallCount 使用同一把文件锁，避免「并发写缓冲」与「合并清空缓冲」交错
+    // 导致刚写入的计数被 unlink 丢失。拿不到锁则跳过，留待下次合并。
+    $lockFile = $file . '.lock';
+    $fp = @fopen($lockFile, 'c');
+    if ($fp === false || !flock($fp, LOCK_EX)) {
+        if (is_resource($fp)) fclose($fp);
+        return;
+    }
+
     $buf = readStatsBuffer($date);
     if (($buf['total'] ?? 0) <= 0) {
         @unlink($file);
+        flock($fp, LOCK_UN);
+        fclose($fp);
         return;
     }
     writeCallStatsDirect(
@@ -893,6 +909,9 @@ function flushStatsBuffer($date = null) {
         (int)($buf['total'] ?? 0)
     );
     @unlink($file);
+
+    flock($fp, LOCK_UN);
+    fclose($fp);
 }
 
 // 读取统计前合并所有残留的统计缓冲（含历史日期）。
@@ -948,6 +967,53 @@ function archiveOldCallStats() {
     $stmt->execute([$cutoff]);
 }
 
+// 按固定间隔自动落库：把统计缓冲合并进 SQLite，避免「长期不打开后台」导致计数滞留缓存而丢失。
+// 使用独立落库锁 + 时间戳标记文件做节流与并发互斥；落库是后台性维护动作，不阻塞 API 响应。
+function autoFlushStatsIfDue() {
+    $interval = (int)STATS_AUTO_FLUSH_INTERVAL;
+    if ($interval <= 0) {
+        return; // 已禁用自动落库
+    }
+
+    $markerFile = CACHE_DIR . '/stats_flush_marker';
+    $now = time();
+
+    // 快路径：距上次落库未到间隔，直接跳过（无锁，开销极低）
+    if (file_exists($markerFile)) {
+        $last = (int)@file_get_contents($markerFile);
+        if ($last > 0 && ($now - $last) < $interval) {
+            return;
+        }
+    }
+
+    // 慢路径：需要落库，用独立锁防止多个并发请求重复落库
+    $lockFile = CACHE_DIR . '/stats_flush.lock';
+    $fp = @fopen($lockFile, 'c');
+    if ($fp === false || !flock($fp, LOCK_EX | LOCK_NB)) {
+        if (is_resource($fp)) fclose($fp);
+        return; // 已有其他请求在落库，本次跳过
+    }
+
+    // 双重检查：拿到锁后再次校验时间戳，避免阻塞等待期间已被其他请求落库
+    if (file_exists($markerFile)) {
+        $last = (int)@file_get_contents($markerFile);
+        if ($last > 0 && ($now - $last) < $interval) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return;
+        }
+    }
+
+    flushAllStatsBuffers();
+    archiveOldCallStats();
+
+    // 记录本次落库时间
+    @file_put_contents($markerFile, (string)$now);
+
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
 // 统计写入：先更新文件缓冲（低开销，不触碰 SQLite 写锁），读取统计时再合并入库
 function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
     $date = date('Y-m-d');
@@ -981,6 +1047,10 @@ function updateCallCount($type, $returnType = 'redirect', $deviceType = null) {
 
     flock($fp, LOCK_UN);
     fclose($fp);
+
+    // 按间隔自动落库：让计数即使不打开后台也能及时持久化到 SQLite
+    autoFlushStatsIfDue();
+
     return true;
 }
 
