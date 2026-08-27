@@ -724,17 +724,11 @@ if ($mustChangePassword && $currentSection !== 'user') {
                     </div>
                 </div>
 
-                <!-- 环境检测明细（复用环境检测页的渲染） -->
-                <div class="card mt-3">
-                    <div class="card-header">
-                        <h3 class="card-title">环境检测明细</h3>
-                        <div class="card-tools">
-                            <a href="?section=environment" class="btn btn-tool" title="前往完整环境检测页"><i class="fas fa-external-link-alt"></i></a>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <?php echo renderEnvironmentChecksHtml(); ?>
-                    </div>
+                <!-- 环境检测入口（完整检测已独立到「环境检测」页，避免重复展示） -->
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i>
+                    运行环境、依赖扩展与目录权限的完整检测结果已整合至
+                    <a href="?section=environment">环境检测</a> 页面。
                 </div>
                 <?php endif; ?>
 
