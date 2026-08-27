@@ -9,6 +9,9 @@ data/*.db.schema_ok
 # 缓存目录（包含 .cache 文件），每次版本更新自动重建
 data/cache/
 
+# 会话运行时目录（本地预览服务器保存 session 文件）
+data/sessions/
+
 # 旧数据文件（已迁移到 SQLite）
 data/*.json
 data/*.txt
