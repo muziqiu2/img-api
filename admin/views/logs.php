@@ -21,7 +21,7 @@
                                 <?php foreach ($adminLogs as $log): ?>
                                 <tr>
                                     <td><?php echo htmlspecialchars($log['time']); ?></td>
-                                    <td><span class="badge badge-primary"><?php echo htmlspecialchars($log['username']); ?></span></td>
+                                    <td><span class="badge text-bg-primary"><?php echo htmlspecialchars($log['username']); ?></span></td>
                                     <td><?php echo htmlspecialchars($log['action']); ?></td>
                                     <td><code><?php echo htmlspecialchars($log['ip']); ?></code></td>
                                 </tr>

@@ -213,9 +213,9 @@ function renderEnvironmentChecksHtml() {
                             <td>
                                 <?php echo htmlspecialchars($c['label'], ENT_QUOTES); ?>
                                 <?php if ($c['required']): ?>
-                                    <span class="badge badge-danger">必需</span>
+                                    <span class="badge text-bg-danger">必需</span>
                                 <?php else: ?>
-                                    <span class="badge badge-secondary">可选</span>
+                                    <span class="badge text-bg-secondary">可选</span>
                                 <?php endif; ?>
                             </td>
                             <td><?php echo htmlspecialchars($c['detail'], ENT_QUOTES); ?></td>

@@ -64,8 +64,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: '总调用',
                     data: totalCalls,
-                    borderColor: '#6366f1',
-                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    borderColor: '#2f6fed',
+                    backgroundColor: 'rgba(47, 111, 237, 0.10)',
                     tension: 0.3,
                     fill: true,
                     pointRadius: filteredDates.length > 15 ? 2 : 4,
@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: 'PC端',
                     data: pcCalls,
-                    borderColor: '#3b82f6',
+                    borderColor: '#1f2733',
                     backgroundColor: 'transparent',
                     tension: 0.3,
                     pointRadius: filteredDates.length > 15 ? 2 : 4,
@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: '移动端',
                     data: peCalls,
-                    borderColor: '#8b5cf6',
+                    borderColor: '#8aa0ba',
                     backgroundColor: 'transparent',
                     tension: 0.3,
                     pointRadius: filteredDates.length > 15 ? 2 : 4,

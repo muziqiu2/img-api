@@ -41,14 +41,14 @@ function confirmDialog(options) {
     yesBtn.className = 'btn ' + (options.danger ? 'btn-danger' : 'btn-primary');
     return new Promise(function(resolve) {
         confirmResolve = resolve;
-        $('#confirmModal').modal('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).show();
     });
 }
 
 function resolveConfirm(result) {
     var fn = confirmResolve;
     confirmResolve = null;
-    $('#confirmModal').modal('hide');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).hide();
     if (fn) fn(result);
 }
 
@@ -376,7 +376,7 @@ function loadBackupList() {
                 html += '<td>' + escapeHtml(b.size) + ' KB</td>';
                 html += '<td>' + escapeHtml(b.time) + '</td>';
                 html += '<td class="nowrap">';
-                html += '<button type="button" class="btn btn-sm btn-warning mr-1" data-action="rollback" data-file="' + encodeURIComponent(String(b.filename)) + '">';
+                html += '<button type="button" class="btn btn-sm btn-warning me-1" data-action="rollback" data-file="' + encodeURIComponent(String(b.filename)) + '">';
                 html += '<i class="fas fa-undo"></i> 恢复</button>';
                 html += '<button type="button" class="btn btn-sm btn-danger" data-action="delete" data-file="' + encodeURIComponent(String(b.filename)) + '">';
                 html += '<i class="fas fa-trash"></i> 删除</button>';
@@ -415,11 +415,11 @@ function loadUpdateHistory() {
             }
             var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
             data.logs.forEach(function(log) {
-                var statusClass = 'badge-info';
+                var statusClass = 'text-bg-info';
                 var statusText = log.status;
-                if (log.status === 'success') { statusClass = 'badge-success'; statusText = '成功'; }
-                else if (log.status === 'failed') { statusClass = 'badge-danger'; statusText = '失败'; }
-                else if (log.status === 'rollback') { statusClass = 'badge-warning'; statusText = '回滚'; }
+                if (log.status === 'success') { statusClass = 'text-bg-success'; statusText = '成功'; }
+                else if (log.status === 'failed') { statusClass = 'text-bg-danger'; statusText = '失败'; }
+                else if (log.status === 'rollback') { statusClass = 'text-bg-warning'; statusText = '回滚'; }
                 html += '<tr>';
                 // 数据库中 username/message 等一律转义，防存储型 XSS
                 html += '<td>' + escapeHtml(log.timestamp || '-') + '</td>';
@@ -659,6 +659,46 @@ if (siteSettingsForm) {
     });
 });
 }
+
+// ============================================
+// 侧边栏折叠（替代原 AdminLTE push-menu）
+// ============================================
+document.addEventListener('DOMContentLoaded', function () {
+    var layout = document.getElementById('appLayout');
+    var toggle = document.getElementById('sidebarToggle');
+
+    function syncState() {
+        // 桌面端：记忆折叠状态；移动端：抽屉由横幅 class 控制
+        if (!layout) return;
+        if (window.innerWidth > 991.98) {
+            layout.classList.remove('sidebar-open');
+        }
+    }
+
+    if (toggle && layout) {
+        toggle.addEventListener('click', function () {
+            if (window.innerWidth <= 991.98) {
+                layout.classList.toggle('sidebar-open');
+            } else {
+                layout.classList.toggle('sidebar-collapsed');
+                try {
+                    localStorage.setItem('app_sidebar_collapsed', layout.classList.contains('sidebar-collapsed') ? '1' : '0');
+                } catch (e) {}
+            }
+            syncState();
+        });
+    }
+
+    // 恢复上次折叠状态
+    if (layout && window.innerWidth > 991.98) {
+        try {
+            if (localStorage.getItem('app_sidebar_collapsed') === '1') {
+                layout.classList.add('sidebar-collapsed');
+            }
+        } catch (e) {}
+    }
+    document.addEventListener('resize', syncState);
+});
 
 // ============================================
 // jQuery 模态框事件绑定

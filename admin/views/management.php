@@ -43,7 +43,7 @@
                     <div class="card-header">
                         <h3 class="card-title">图片链接管理</h3>
                         <div class="card-tools">
-                            <ul class="nav nav-pills ml-auto">
+                            <ul class="nav nav-pills ms-auto">
                                 <li class="nav-item">
                                     <a href="?section=management&type=pc" class="nav-link <?php echo $currentType === 'pc' ? 'active' : ''; ?>">PC端</a>
                                 </li>
@@ -57,8 +57,8 @@
                         <!-- 添加链接表单 -->
                         <form method="post" action="?section=management&type=<?php echo $currentType; ?>">
                             <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
-                            <div class="form-group">
-                                <label>添加图片链接（每行一个URL）</label>
+                            <div class="mb-3">
+                                <label class="form-label">添加图片链接（每行一个URL）</label>
                                 <textarea name="urls" class="form-control" rows="3" placeholder="https://example.com/image1.jpg"></textarea>
                             </div>
                             <button type="submit" name="add_urls" class="btn btn-primary">
@@ -77,7 +77,7 @@
                         <h3 class="card-title">
                             <?php echo $currentType === 'pc' ? 'PC端' : '移动端'; ?>图片链接列表 (共 <?php echo $imageData['total']; ?> 个)
                         </h3>
-                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" data-type="<?php echo htmlspecialchars($currentType, ENT_QUOTES); ?>" style="display:none;">
+                        <button type="button" class="btn btn-danger btn-sm float-end" id="deleteSelectedBtn" data-type="<?php echo htmlspecialchars($currentType, ENT_QUOTES); ?>" style="display:none;">
                             <i class="fas fa-trash"></i> 删除选中
                         </button>
                     </div>
@@ -111,7 +111,7 @@
                     </div>
                     <?php if ($totalPages > 1): ?>
                     <div class="card-footer clearfix">
-                        <ul class="pagination pagination-sm m-0 float-right">
+                        <ul class="pagination pagination-sm m-0 float-end">
                             <?php if ($currentPage > 1): ?>
                             <li class="page-item"><a class="page-link" href="?section=management&type=<?php echo $currentType; ?>&page=<?php echo $currentPage - 1; ?>">&laquo;</a></li>
                             <?php endif; ?>

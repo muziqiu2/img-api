@@ -11,21 +11,21 @@
                     <div class="card-body">
                         <form method="post" action="?section=user">
                             <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
-                            <div class="form-group">
-                                <label for="current_password">原密码</label>
+                            <div class="mb-3">
+                                <label for="current_password" class="form-label">原密码</label>
                                 <input type="password" class="form-control" id="current_password" name="current_password" placeholder="请输入原密码" required>
                             </div>
-                            <div class="form-group">
-                                <label for="new_username">用户名</label>
+                            <div class="mb-3">
+                                <label for="new_username" class="form-label">用户名</label>
                                 <input type="text" class="form-control" id="new_username" name="new_username" value="<?php echo htmlspecialchars($currentUsername); ?>" required>
                             </div>
-                            <div class="form-group">
-                                <label for="new_password">新密码</label>
+                            <div class="mb-3">
+                                <label for="new_password" class="form-label">新密码</label>
                                 <input type="password" class="form-control" id="new_password" name="new_password" placeholder="不修改请留空">
-                                <small class="form-text text-muted">密码长度至少6位</small>
+                                <div class="form-text">密码长度至少6位</div>
                             </div>
-                            <div class="form-group">
-                                <label for="confirm_password">确认新密码</label>
+                            <div class="mb-3">
+                                <label for="confirm_password" class="form-label">确认新密码</label>
                                 <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="再次输入新密码">
                             </div>
                             <button type="submit" name="update_user" class="btn btn-primary">
