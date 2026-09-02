@@ -47,9 +47,9 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
 
     <header class="header text-center">
         <div class="container">
-            <h1 class="display-4 mb-3"><i class="fas fa-magic me-2"></i><?php echo htmlspecialchars($site['site_name'], ENT_QUOTES, 'UTF-8'); ?></h1>
-            <p class="lead"><?php echo htmlspecialchars($site['site_lead'], ENT_QUOTES, 'UTF-8'); ?></p>
-            <a href="admin/" class="admin-link btn btn-light btn-sm">
+            <h1 class="site-name"><i class="fas fa-magic"></i><?php echo htmlspecialchars($site['site_name'], ENT_QUOTES, 'UTF-8'); ?></h1>
+            <p class="site-lead"><?php echo htmlspecialchars($site['site_lead'], ENT_QUOTES, 'UTF-8'); ?></p>
+            <a href="admin/" class="admin-link">
                 <i class="fas fa-cog"></i> 管理后台
             </a>
         </div>
@@ -66,25 +66,25 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
             <div class="col-md-4 mb-3">
                 <div class="stat-card shadow-sm">
                     <p class="stat-label">PC端图片数</p>
-                    <div class="stat-value"><?php echo getImageCount('pc'); ?></div>
+                    <div class="stat-value"><a href="pc.php" target="_blank" rel="noopener"><?php echo getImageCount('pc'); ?></a></div>
                 </div>
             </div>
             <div class="col-md-4 mb-3">
                 <div class="stat-card shadow-sm">
                     <p class="stat-label">移动端图片数</p>
-                    <div class="stat-value"><?php echo getImageCount('pe'); ?></div>
+                    <div class="stat-value"><a href="pe.php" target="_blank" rel="noopener"><?php echo getImageCount('pe'); ?></a></div>
                 </div>
             </div>
         </div>
 
-        <div class="card p-4 mb-5">
+        <div class="paper-card">
             <h3 class="section-title"><i class="fas fa-chart-line me-2"></i>调用趋势</h3>
             <div style="height: 300px;">
                 <canvas id="callTrendChart"></canvas>
             </div>
         </div>
 
-        <div class="card p-4 mb-5">
+        <div class="paper-card">
             <h3 class="section-title"><i class="fas fa-book-open me-2"></i>API使用指南</h3>
             
             <div class="row mb-4">
@@ -292,18 +292,18 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
             </div>
         </div>
 
-        <div class="card p-4 mb-5">
+        <div class="paper-card">
             <h3 class="section-title"><i class="fas fa-exchange-alt me-2"></i>图片访问模式</h3>
             <div class="row">
                 <div class="col-md-6 mb-3">
-                    <div class="p-3 bg-light rounded h-100">
-                        <h5><i class="fas fa-link text-primary me-1"></i> 302 跳转模式（默认）</h5>
+                    <div class="mode-card">
+                        <h5><i class="fas fa-link icon-brand"></i> 302 跳转模式（默认）</h5>
                         <p class="text-sm">直接重定向到随机图片URL，适用于大多数场景</p>
                     </div>
                 </div>
                 <div class="col-md-6 mb-3">
-                    <div class="p-3 bg-light rounded h-100">
-                        <h5><i class="fas fa-image text-info me-1"></i> 代理模式</h5>
+                    <div class="mode-card">
+                        <h5><i class="fas fa-image icon-brand"></i> 代理模式</h5>
                         <p class="text-sm">由服务器代为下载并转发图片，隐藏真实图片链接</p>
                     </div>
                 </div>

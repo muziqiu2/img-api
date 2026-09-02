@@ -67,67 +67,49 @@ if (isAccountLocked()) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>魔法师API - 登录</title>
     <link rel="stylesheet" href="../public/css/all.min.css">
-    <link rel="stylesheet" href="../public/css/adminlte.min.css">
+    <link rel="stylesheet" href="../public/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../public/css/admin.css">
 </head>
-<body class="hold-transition login-page">
-<div class="login-box">
-    <div class="login-logo">
-        <a href="/"><i class="fas fa-magic"></i> <b>魔法师</b>API</a>
+<body class="app-login">
+<div class="app-login-box">
+    <div class="app-login-brand">
+        <i class="fas fa-magic"></i> 魔法师API
     </div>
-    <div class="card">
-        <div class="card-body login-card-body">
-            <p class="login-box-msg">管理员登录</p>
-            
-            <?php if ($lockMessage): ?>
-            <div class="alert alert-warning">
-                <i class="icon fas fa-exclamation-triangle"></i> <?php echo $lockMessage; ?>
-            </div>
-            <?php endif; ?>
-            
-            <?php if ($error): ?>
-            <div class="alert alert-danger">
-                <i class="icon fas fa-ban"></i> <?php echo htmlspecialchars($error); ?>
-            </div>
-            <?php endif; ?>
-            
-            <form method="post">
-                <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
-                <div class="input-group mb-3">
-                    <input type="text" class="form-control" name="username" placeholder="用户名" value="<?php echo htmlspecialchars($username); ?>" required <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
-                    <div class="input-group-append">
-                        <div class="input-group-text">
-                            <span class="fas fa-user"></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="input-group mb-3">
-                    <input type="password" class="form-control" name="password" placeholder="密码" required <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
-                    <div class="input-group-append">
-                        <div class="input-group-text">
-                            <span class="fas fa-lock"></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-12">
-                        <button type="submit" name="login" class="btn btn-primary btn-block" <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
-                            <i class="fas fa-sign-in-alt mr-1"></i> 登录
-                        </button>
-                    </div>
-                </div>
-            </form>
-            
-            <div class="mt-3 text-center">
-                <p class="text-muted" style="font-size: 0.85rem;">
-                    首次使用请查阅项目说明文档配置管理员账号
-                </p>
-            </div>
+    <p class="app-login-subtitle">管理员登录</p>
+
+    <?php if ($lockMessage): ?>
+    <div class="alert alert-warning py-2" role="alert">
+        <i class="fas fa-exclamation-triangle"></i> <?php echo htmlspecialchars($lockMessage); ?>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($error): ?>
+    <div class="alert alert-danger py-2" role="alert">
+        <i class="fas fa-ban"></i> <?php echo htmlspecialchars($error); ?>
+    </div>
+    <?php endif; ?>
+
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
+        <div class="mb-3">
+            <label class="form-label" for="username">用户名</label>
+            <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" value="<?php echo htmlspecialchars($username); ?>" autocomplete="username" required <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
         </div>
-    </div>
+        <div class="mb-3">
+            <label class="form-label" for="password">密码</label>
+            <input type="password" class="form-control" id="password" name="password" placeholder="请输入密码" autocomplete="current-password" required <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
+        </div>
+        <button type="submit" name="login" class="btn btn-primary w-100" <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
+            <i class="fas fa-sign-in-alt"></i> 登录
+        </button>
+    </form>
+
+    <p class="text-muted text-center mb-0" style="font-size: .8rem; margin-top: 1.25rem;">
+        首次使用请查阅项目说明文档配置管理员账号
+    </p>
 </div>
 
 <script src="../public/js/jquery.min.js"></script>
 <script src="../public/js/bootstrap.bundle.min.js"></script>
-<script src="../public/js/adminlte.min.js"></script>
 </body>
 </html>

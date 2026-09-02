@@ -31,12 +31,12 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="form-group" id="releaseInfoBox" style="display:none;">
-                            <label>最新版本发布信息</label>
+                        <div class="mb-3" id="releaseInfoBox" style="display:none;">
+                            <label class="form-label">最新版本发布信息</label>
                             <div class="card bg-light p-3" id="releaseDetails">
                                 <div class="mb-2">
                                     <strong id="releaseName"></strong>
-                                    <small class="text-muted ml-2" id="releaseDate"></small>
+                                    <small class="text-muted ms-2" id="releaseDate"></small>
                                 </div>
                                 <div class="mb-2">
                                     <a id="releaseUrl" href="#" target="_blank" class="btn btn-outline-primary btn-sm">
@@ -87,17 +87,15 @@
                             <div class="col-md-8">
                                 <div class="input-group">
                                     <input type="password" class="form-control" id="githubTokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxx">
-                                    <div class="input-group-append">
-                                        <button type="button" class="btn btn-outline-secondary" id="toggleTokenBtn" onclick="toggleTokenVisibility()">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-primary" id="saveTokenBtn" onclick="saveGithubToken()">
-                                            <i class="fas fa-save"></i> 保存
-                                        </button>
-                                        <button type="button" class="btn btn-outline-danger" id="clearTokenBtn" onclick="clearGithubToken()" style="display:none;">
-                                            <i class="fas fa-trash"></i> 清空
-                                        </button>
-                                    </div>
+                                    <button type="button" class="btn btn-outline-secondary" id="toggleTokenBtn" onclick="toggleTokenVisibility()">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-primary" id="saveTokenBtn" onclick="saveGithubToken()">
+                                        <i class="fas fa-save"></i> 保存
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger" id="clearTokenBtn" onclick="clearGithubToken()" style="display:none;">
+                                        <i class="fas fa-trash"></i> 清空
+                                    </button>
                                 </div>
                                 <small class="form-text text-muted" id="tokenStatus"></small>
                             </div>
