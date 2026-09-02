@@ -138,7 +138,9 @@ function initDatabase() {
         )
     ");
 
-    // 确保默认用户存在
+    // 仅在全新初始化（schema 标记不存在）时播种默认账号 admin/123456；
+    // 正常运行期间本函数因标记存在而提前返回，不会重建账号——
+    // 与 lib/auth.php getUserConfig() 不静默重建的设计保持一致（记录被删属异常态，锁定比静默重置凭据更安全）。
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM user_config");
     $stmt->execute();
     $result = $stmt->fetch();
