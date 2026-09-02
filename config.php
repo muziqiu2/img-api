@@ -4,6 +4,11 @@
  * 使用 SQLite 数据库存储
  */
 
+// 统一应用时区：统计按自然日归档、日志时间戳等均依赖时区，
+// 未设置时 PHP 默认随服务器时区，导致跨机器部署时「按日」口径不一致。
+// 如需自定义，修改下方或改为从网站设置读取。
+date_default_timezone_set('Asia/Shanghai');
+
 // 确保目录存在
 $requiredDirs = ['data', 'admin/logs', 'data/cache', 'data/backups', 'data/update_cache'];
 foreach ($requiredDirs as $dir) {
@@ -59,7 +64,8 @@ define('UPDATE_TIMEOUT', 300);                                // 更新执行超
 define('UPDATE_MIN_FREE_SPACE', 100 * 1024 * 1024);           // 最少需要 100MB 空闲空间
 
 // 更新时被保护、不会被覆盖的目录/文件（相对项目根目录）
-define('UPDATE_PROTECTED_PATHS', serialize([
+// PHP 7.4+ 支持 define() 直接定义数组，无需 serialize 序列化存储。
+define('UPDATE_PROTECTED_PATHS', [
     'data/',
     'admin/logs/',
     'data/cache/',
@@ -68,14 +74,14 @@ define('UPDATE_PROTECTED_PATHS', serialize([
     '.git/',
     '.htaccess',
     '.router.php',
-]));
+]);
 
 // 更新时允许被替换的文件扩展名白名单（空数组表示不限制扩展名，仅受目录保护）
-define('UPDATE_ALLOWED_EXTENSIONS', serialize([
+define('UPDATE_ALLOWED_EXTENSIONS', [
     'php', 'txt', 'md', 'html', 'htm', 'css', 'js', 'json',
     'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico',
     'woff', 'woff2', 'ttf', 'eot', 'map',
-]));
+]);
 
 // ==================== 客户端IP获取函数 ====================
 
@@ -85,11 +91,19 @@ function getClientIp() {
     // 如果配置了信任代理头，则检查代理相关头部
     if (TRUST_PROXY_HEADERS) {
         // X-Forwarded-For: client, proxy1, proxy2
+        // ⚠ 注意：XFF 最右侧地址可被客户端/上游直接伪造，仅应信任「由可信代理追加、
+        //   且为公网（非私有/非保留段）」的最右 IP。故从右往左跳过私有/保留段取第一个公网 IP。
         $xff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
         if (!empty($xff)) {
-            // 取最后一个IP（最靠近服务器的才是真实的出口IP）
-            $ips = array_map('trim', explode(',', $xff));
-            $ip = end($ips);
+            $ips = array_reverse(array_map('trim', explode(',', $xff)));
+            foreach ($ips as $candidate) {
+                // 跳过内网/保留段（这些多为代理内网地址，不可作为真实客户端 IP）
+                if (filter_var($candidate, FILTER_VALIDATE_IP,
+                    FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                    $ip = $candidate;
+                    break;
+                }
+            }
         }
 
         // X-Real-IP
@@ -1392,7 +1406,10 @@ function getRandomImageUrl($type = 'pc') {
 
 // 从数据库载入某类型的全部图片 id 并写入缓存（未命中时重新构建）
 function loadImageIdList($db, $type) {
-    $rows = $db->query("SELECT id FROM image_urls WHERE type = " . $db->quote($type))->fetchAll(PDO::FETCH_ASSOC);
+    // 使用占位符而非 quote() 拼接，与全项目预处理风格统一，杜绝 SQL 注入面
+    $stmt = $db->prepare("SELECT id FROM image_urls WHERE type = ?");
+    $stmt->execute([$type]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $ids = array_values(array_map('intval', array_column($rows, 'id')));
     setCachedImageIds($type, $ids);
     return $ids;
@@ -2112,7 +2129,7 @@ function renderEnvironmentChecksHtml() {
 
 // 判断路径是否受保护（不会被更新覆盖
 function isPathProtected($relativePath) {
-    $protected = unserialize(UPDATE_PROTECTED_PATHS);
+    $protected = UPDATE_PROTECTED_PATHS;
     $relativePath = str_replace('\\', '/', $relativePath);
     // 仅去除开头的 ./,避免吞掉 .git/.htaccess 等点前缀路径
     $normalized = preg_replace('#^\./+#', '', $relativePath);
@@ -2137,7 +2154,7 @@ function str_starts_with_custom($haystack, $needle) {
 
 // 检查文件扩展名是否在白名单内
 function isExtensionAllowed($filename) {
-    $allowed = unserialize(UPDATE_ALLOWED_EXTENSIONS);
+    $allowed = UPDATE_ALLOWED_EXTENSIONS;
     if (empty($allowed)) return true;
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     return in_array($ext, $allowed);

@@ -419,7 +419,7 @@ class AppUpdater
         }
 
         $rootPath = realpath(dirname(__DIR__));
-        $protected = unserialize(UPDATE_PROTECTED_PATHS);
+        $protected = UPDATE_PROTECTED_PATHS;
 
         // 收集要备份的文件
         $files = new RecursiveIteratorIterator(
