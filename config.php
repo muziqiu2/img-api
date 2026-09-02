@@ -655,11 +655,20 @@ function checkAdminRateLimitGeneric($maxRequests = 30, $windowSeconds = 60) {
 // ==================== 图片管理函数 ====================
 
 function getImageCount($type = 'pc') {
+    // 复用数量缓存（避免每页/每请求 COUNT(*)，图片数低频变化且增删路径均已清缓存）
+    $cached = getCachedImageCount($type);
+    if ($cached !== null) {
+        return $cached;
+    }
+
     $db = getDb();
     $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM image_urls WHERE type = ?");
     $stmt->execute([$type]);
     $result = $stmt->fetch();
-    return $result['cnt'] ?? 0;
+    $count = $result['cnt'] ?? 0;
+
+    setCachedImageCount($type, $count);
+    return $count;
 }
 
 function getImageUrls($type = 'pc', $page = 1, $perPage = 20) {
