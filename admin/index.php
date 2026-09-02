@@ -41,6 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     }
     else {
         recordLoginAttempt(true);
+        // 防会话固定：登录成功后更换会话 ID，丢弃登录前的旧会话
+        session_regenerate_id(true);
         $_SESSION['admin_logged_in'] = true;
         $_SESSION['admin_login_time'] = time();
         $_SESSION['admin_username'] = $username;
