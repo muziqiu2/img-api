@@ -46,7 +46,7 @@ if (!$rateLimited && $_SERVER['REQUEST_METHOD'] === 'POST' && $currentSection ==
             }
         }
         elseif (isset($_POST['delete_url'])) {
-            $url = isset($_POST['url']) ? $_POST['url'] : '';
+            $url = trim($_POST['delete_url'] ?? '');
             if (deleteImageUrl($url, $currentType)) {
                 $message = "图片链接已成功删除";
                 $messageType = 'success';
@@ -266,14 +266,14 @@ if ($mustChangePassword && $currentSection !== 'user') {
             <div class="container-fluid">
                 <?php if ($message): ?>
                 <div class="alert alert-<?php echo $messageType === 'error' ? 'danger' : ($messageType === 'warning' ? 'warning' : 'success'); ?> alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                    <button type="button" class="close" data-bs-dismiss="alert">&times;</button>
                     <?php echo htmlspecialchars($message); ?>
                 </div>
                 <?php endif; ?>
 
                 <?php if ($mustChangePassword): ?>
                 <div class="alert alert-danger alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert">&times;</button>
+                    <button type="button" class="close" data-bs-dismiss="alert">&times;</button>
                     <i class="icon fas fa-exclamation-triangle"></i>
                     <strong>安全警告：</strong>当前仍在使用默认密码（123456），系统已禁止使用其他功能，请立即修改密码！
                 </div>
