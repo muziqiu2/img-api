@@ -157,11 +157,20 @@ API 直接302重定向到随机图片URL，适合`<img>`标签直接使用。
 ├── pc.php               # PC端专用API
 ├── pe.php               # 移动端专用API
 ├── index.php            # 项目首页
-├── config.php           # 配置文件和核心函数
+├── config.php           # 配置入口：核心常量、会话引导与 lib 模块装配
 ├── nginx.conf.example   # Nginx 部署安全配置示例
+├── lib/                 # 核心函数模块（按职责拆分，由 config.php 统一 require）
+│   ├── db.php           # 数据库连接与初始化
+│   ├── auth.php         # 认证/登录锁定/CSRF
+│   ├── images.php       # 图片管理
+│   ├── network.php      # SSRF 防护、远程抓取与设备识别
+│   ├── stats.php        # 调用统计与自动落库
+│   ├── update.php       # 自动更新与目录防护
+│   └── ...              # 其余模块（cache/settings/ratelimit/api/log/version/environment）
 ├── admin/
 │   ├── index.php        # 登录页面
-│   ├── dashboard.php    # 管理后台
+│   ├── dashboard.php    # 管理后台（路由与共享布局）
+│   ├── views/           # 后台各功能区块视图（按 section 拆分）
 │   ├── logout.php       # 退出登录
 │   ├── update.php       # 一键更新AJAX接口
 │   └── logs/            # 操作日志目录
@@ -169,13 +178,15 @@ API 直接302重定向到随机图片URL，适合`<img>`标签直接使用。
 │   ├── updater.php      # 核心更新类
 │   └── migrations.php   # 数据迁移脚本
 ├── public/             # 静态资源目录
-└── data/
+└── data/                # 数据目录（SQLite、缓存、备份等）
     ├── app.db           # SQLite 数据库
     ├── app_version.txt  # 版本号备份文件
     ├── cache/           # 缓存目录
     ├── backups/         # 更新备份目录
     └── update_cache/    # 更新临时下载目录
 ```
+
+> 自 v3.2.2 起，`config.php` 已收敛为配置入口，业务函数按职责拆分为 `lib/` 下的独立模块；管理后台各功能区块（图片管理、操作日志、用户设置、网站设置、环境检测、系统更新）拆分为 `admin/views/` 下的子视图。业务调用方无需感知这些拆分。
 
 ## 技术栈
 
