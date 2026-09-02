@@ -149,6 +149,23 @@ function deleteSelected(type, token) {
     });
 }
 
+// 图片删除事件委托：取代旧式内联 onclick（data-* 传参，与全站风格统一，
+// 消除 URL/类型拼接进 JS 字符串的注入风险）。document 级委托一次绑定，分页重渲染也无需重新绑定。
+document.addEventListener('click', function (e) {
+    var target = e.target;
+    var delBtn = target.closest ? target.closest('.btn-del-url') : null;
+    if (delBtn) {
+        e.preventDefault();
+        // dataset 由浏览器自动解码 HTML 实体，URL 中的引号/& 等可安全传递
+        showDeleteConfirm(delBtn.dataset.url, delBtn.dataset.type, APP.csrf);
+        return;
+    }
+    var selBtn = target.closest ? target.closest('#deleteSelectedBtn') : null;
+    if (selBtn) {
+        deleteSelected(selBtn.dataset.type, APP.csrf);
+    }
+});
+
 // ============================================
 // 系统更新相关 JavaScript（全局函数定义）
 // ============================================
@@ -210,7 +227,7 @@ function renderUpdateResult(data, fromCache, cacheTime) {
     if (data.has_update) {
         var cacheHint = fromCache && cacheTime ? '（数据更新于 ' + cacheTime + '，5 分钟内自动使用本地缓存，点击右上角按钮可强制重新检查）' : '';
         setUpdateStatus(
-            '发现新版本 <strong>' + latest + '</strong>（当前版本 ' + data.current + '）。建议立即更新。' + cacheHint,
+            '发现新版本 ' + latest + '（当前版本 ' + data.current + '）。建议立即更新。' + cacheHint,
             'success'
         );
         document.getElementById('updateActionBox').style.display = 'block';

@@ -359,7 +359,7 @@ if ($mustChangePassword && $currentSection !== 'user') {
                         <h3 class="card-title">
                             <?php echo $currentType === 'pc' ? 'PC端' : '移动端'; ?>图片链接列表 (共 <?php echo $imageData['total']; ?> 个)
                         </h3>
-                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" onclick="deleteSelected(<?php echo json_encode($currentType, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode($csrfToken, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)" style="display:none;">
+                        <button type="button" class="btn btn-danger btn-sm float-right" id="deleteSelectedBtn" data-type="<?php echo htmlspecialchars($currentType, ENT_QUOTES); ?>" style="display:none;">
                             <i class="fas fa-trash"></i> 删除选中
                         </button>
                     </div>
@@ -382,7 +382,7 @@ if ($mustChangePassword && $currentSection !== 'user') {
                                         </a>
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm" onclick="showDeleteConfirm(<?php echo json_encode($url, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode($currentType, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>, <?php echo json_encode($csrfToken, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>)">
+                                        <button type="button" class="btn btn-danger btn-sm btn-del-url" data-url="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>" data-type="<?php echo htmlspecialchars($currentType, ENT_QUOTES); ?>">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
