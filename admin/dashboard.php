@@ -999,7 +999,8 @@ function setUpdateStatus(message, type) {
     else if (type === 'error') { alertClass = 'alert alert-danger'; iconClass = 'fas fa-exclamation-triangle'; }
     else if (type === 'warning') { alertClass = 'alert alert-warning'; iconClass = 'fas fa-exclamation-circle'; }
     box.className = alertClass;
-    box.innerHTML = '<i class="icon ' + iconClass + '"></i> ' + message;
+    // message 可能来自 GitHub API（如 tag_name）、错误信息等，统一转义防 XSS
+    box.innerHTML = '<i class="icon ' + iconClass + '"></i> ' + escapeHtml(message);
 }
 
 function appendUpdateLog(line) {
@@ -1186,22 +1187,38 @@ function loadBackupList() {
             var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>文件名</th><th style="width:80px;">大小 (KB)</th><th style="width:110px;">创建时间</th><th style="width:130px;">操作</th></tr></thead><tbody>';
             data.backups.forEach(function(b) {
                 html += '<tr>';
-                html += '<td>' + b.filename + '</td>';
-                html += '<td>' + b.size + ' KB</td>';
-                html += '<td>' + b.time + '</td>';
+                // filename/size/time 均来自服务端备份文件名，统一转义；按钮通过 data-* + 事件委托传参，
+                // 避免内联 onclick 字符串拼接造成的 XSS 与 JS 语法破坏
+                html += '<td>' + escapeHtml(b.filename) + '</td>';
+                html += '<td>' + escapeHtml(b.size) + ' KB</td>';
+                html += '<td>' + escapeHtml(b.time) + '</td>';
                 html += '<td class="nowrap">';
-                html += '<button type="button" class="btn btn-sm btn-warning mr-1" onclick="doRollback(\'' + b.filename + '\')">';
+                html += '<button type="button" class="btn btn-sm btn-warning mr-1" data-action="rollback" data-file="' + encodeURIComponent(String(b.filename)) + '">';
                 html += '<i class="fas fa-undo"></i> 恢复</button>';
-                html += '<button type="button" class="btn btn-sm btn-danger" onclick="deleteBackup(\'' + b.filename + '\')">';
+                html += '<button type="button" class="btn btn-sm btn-danger" data-action="delete" data-file="' + encodeURIComponent(String(b.filename)) + '">';
                 html += '<i class="fas fa-trash"></i> 删除</button>';
                 html += '</td></tr>';
             });
             html += '</tbody></table></div>';
             box.innerHTML = html;
+            bindBackupActions(box);
         })
         .catch(function() {
             document.getElementById('backupList').innerHTML = '<div class="text-danger">加载失败</div>';
         });
+}
+
+// 备份列表按钮事件委托（替代内联 onclick，杜绝文件名拼接进 JS 字符串）
+function bindBackupActions(container) {
+    container.onclick = function(e) {
+        var target = e.target;
+        var btn = target && target.closest ? target.closest('button[data-action]') : null;
+        if (!btn) return;
+        var action = btn.getAttribute('data-action');
+        var filename = decodeURIComponent(btn.getAttribute('data-file') || '');
+        if (action === 'rollback') doRollback(filename);
+        else if (action === 'delete') deleteBackup(filename);
+    };
 }
 
 function loadUpdateHistory() {
@@ -1221,12 +1238,13 @@ function loadUpdateHistory() {
                 else if (log.status === 'failed') { statusClass = 'badge-danger'; statusText = '失败'; }
                 else if (log.status === 'rollback') { statusClass = 'badge-warning'; statusText = '回滚'; }
                 html += '<tr>';
-                html += '<td>' + (log.timestamp || '-') + '</td>';
-                html += '<td>' + (log.from_version || '-') + '</td>';
-                html += '<td>' + (log.to_version || '-') + '</td>';
-                html += '<td><span class="badge ' + statusClass + '">' + statusText + '</span></td>';
-                html += '<td>' + (log.username || '-') + '</td>';
-                html += '<td>' + (log.message || '-') + '</td>';
+                // 数据库中 username/message 等一律转义，防存储型 XSS
+                html += '<td>' + escapeHtml(log.timestamp || '-') + '</td>';
+                html += '<td>' + escapeHtml(log.from_version || '-') + '</td>';
+                html += '<td>' + escapeHtml(log.to_version || '-') + '</td>';
+                html += '<td><span class="badge ' + statusClass + '">' + escapeHtml(statusText) + '</span></td>';
+                html += '<td>' + escapeHtml(log.username || '-') + '</td>';
+                html += '<td>' + escapeHtml(log.message || '-') + '</td>';
                 html += '</tr>';
             });
             html += '</tbody></table></div>';

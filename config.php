@@ -793,6 +793,14 @@ function isSafeRemoteUrl($url, &$resolved = null) {
         '/^224\./',
         '/^240\./',
         '/^255\.255\.255\.255$/',
+        // CGNAT 共享地址段 100.64.0.0/10
+        '/^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./',
+        // 基准测试网段 198.18.0.0/15
+        '/^198\.(1[89])\./',
+        // 文档/测试专用网段 TEST-NET-1/2/3
+        '/^192\.0\.2\./',
+        '/^198\.51\.100\./',
+        '/^203\.0\.113\./',
         '/^(fe80|fc00|fd00|::1|fe80::)/i',
         '/^\[/', // IPv6 raw
     ];
@@ -800,6 +808,15 @@ function isSafeRemoteUrl($url, &$resolved = null) {
         if (preg_match($pattern, $ip)) {
             return false;
         }
+    }
+
+    // 双保险：用 PHP 官方过滤器覆盖其自带的私有/保留网段（10/8、172.16/12、192.168/16、
+    // 0/8、127/8、169.254/16、组播与 240/4 等）。
+    // 注意：filter_var 的 FILTER_FLAG_NO_RES_RANGE 并不覆盖 CGNAT(100.64/10)、测试网段与
+    // 198.18/15 基准段——这些由上方正则补足。二者叠加后才是完整兜底，避免单一路径漏判。
+    if (!filter_var($ip, FILTER_VALIDATE_IP,
+        FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        return false;
     }
 
     // 端口白名单（仅允许常见 Web 端口，防止探测内网非 Web 服务）
