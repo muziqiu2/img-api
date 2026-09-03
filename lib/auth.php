@@ -78,23 +78,49 @@ function isDefaultPassword() {
 
 function recordLoginAttempt($success = false) {
     $db = getDb();
-    
+
     if ($success) {
         $stmt = $db->prepare("
             UPDATE user_config SET login_attempts = 0, locked_until = 0, last_attempt = ? WHERE id = 1
         ");
         return $stmt->execute([time()]);
-    } else {
-        $stmt = $db->prepare("SELECT login_attempts FROM user_config WHERE id = 1");
+    }
+
+    $now = time();
+    // BEGIN IMMEDIATE：序列化并发登录失败的读-改-写，
+    // 避免两个请求同时读到同一旧计数而绕过「5 次锁定」阈值
+    $db->exec('BEGIN IMMEDIATE');
+    try {
+        $stmt = $db->prepare("SELECT login_attempts, locked_until FROM user_config WHERE id = 1");
         $stmt->execute();
         $result = $stmt->fetch();
-        $attempts = ($result['login_attempts'] ?? 0) + 1;
-        $lockedUntil = ($attempts >= 5) ? time() + 300 : 0;
-        
+        $attempts = (int)($result['login_attempts'] ?? 0);
+        $lockedUntil = (int)($result['locked_until'] ?? 0);
+
+        if ($lockedUntil > $now) {
+            // 锁定期内：不累计、不刷新锁定结束时间（防御性，避免失败请求无限顺延锁定）
+            $db->exec('COMMIT');
+            return true;
+        }
+        if ($lockedUntil > 0) {
+            // 锁定期已自然结束：重置计数，重新给予完整的尝试次数
+            $attempts = 0;
+        }
+
+        $attempts += 1;
+        $newLockedUntil = ($attempts >= 5) ? $now + 300 : 0;
+
         $stmt = $db->prepare("
             UPDATE user_config SET login_attempts = ?, locked_until = ?, last_attempt = ? WHERE id = 1
         ");
-        return $stmt->execute([$attempts, $lockedUntil, time()]);
+        $stmt->execute([$attempts, $newLockedUntil, $now]);
+        $db->exec('COMMIT');
+        return true;
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) {
+            $db->exec('ROLLBACK');
+        }
+        return false;
     }
 }
 

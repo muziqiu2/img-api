@@ -81,9 +81,9 @@ elseif (!$rateLimited && $_SERVER['REQUEST_METHOD'] === 'POST' && $currentSectio
             $messageType = 'error';
         } else {
             $currentPassword = trim($_POST['current_password'] ?? '');
-            $newUsername = trim($_POST['new_username']);
-            $newPassword = trim($_POST['new_password']);
-            $confirmPassword = trim($_POST['confirm_password']);
+            $newUsername = trim($_POST['new_username'] ?? '');
+            $newPassword = trim($_POST['new_password'] ?? '');
+            $confirmPassword = trim($_POST['confirm_password'] ?? '');
 
             // 验证原密码
             if (empty($currentPassword)) {

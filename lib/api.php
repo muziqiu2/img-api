@@ -57,6 +57,7 @@ function handleImageApiRequest($type, $countType = null) {
                 'error' => $errorMsg,
             ], JSON_UNESCAPED_UNICODE);
         } else {
+            header('Content-Type: text/plain; charset=utf-8');
             echo $errorMsg;
         }
         exit;
@@ -91,13 +92,21 @@ function handleImageApiRequest($type, $countType = null) {
         }
         $imageData = fetchRemoteImage($imageUrl);
         if ($imageData) {
+            // 仅转发真正的图片内容：getimagesizefromstring 通过文件头字节识别
+            // jpeg/png/gif/webp/bmp 等（非整包解码，开销可忽略）。无法识别的内容
+            // （如被劫持图床返回的 HTML/脚本）一律不转发，避免浏览器嗅探在本域执行；
+            // 加 nosniff 双保险。SVG 等文本型图片同样走 302 降级。
             $imageInfo = @getimagesizefromstring($imageData);
-            if ($imageInfo && !empty($imageInfo['mime'])) {
-                header("Content-Type: {$imageInfo['mime']}");
+            $mime = ($imageInfo && !empty($imageInfo['mime'])) ? strtolower($imageInfo['mime']) : '';
+            if ($mime !== '' && strpos($mime, 'image/') === 0) {
+                header('Content-Type: ' . $mime);
+                header('X-Content-Type-Options: nosniff');
+                header('Content-Length: ' . strlen($imageData));
+                echo $imageData;
             } else {
-                header('Content-Type: application/octet-stream');
+                // 内容非图片/无法识别：降级为 302 跳转出图，避免返回 404/白屏
+                header("Location: $imageUrl");
             }
-            echo $imageData;
         } else {
             // 下载失败：降级为 302 跳转出图，避免返回 404/白屏
             header("Location: $imageUrl");

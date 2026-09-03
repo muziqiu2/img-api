@@ -83,12 +83,15 @@ function getLocalEnvironmentChecks() {
     ];
 
     // ---------- 关键目录可写 ----------
+    // 注意：本文件位于 lib/ 下，必须用 dirname(__DIR__) 引用项目根目录，
+    // 不可用 __DIR__（否则会误检/误建 lib/data 等错误路径）
+    $rootDir = dirname(__DIR__);
     $dirs = [
-        __DIR__ . '/data' => '数据目录 (data/)',
+        $rootDir . '/data' => '数据目录 (data/)',
         CACHE_DIR => '缓存目录 (data/cache/)',
         UPDATE_BACKUP_DIR => '备份目录 (data/backups/)',
         UPDATE_CACHE_DIR => '更新缓存 (data/update_cache/)',
-        __DIR__ . '/admin/logs' => '日志目录 (admin/logs/)',
+        $rootDir . '/admin/logs' => '日志目录 (admin/logs/)',
     ];
     foreach ($dirs as $dir => $label) {
         $writable = isDirReallyWritable($dir);
@@ -104,8 +107,7 @@ function getLocalEnvironmentChecks() {
         ];
     }
 
-    // ---------- 环境信息（只读展示） ----------
-    $db = null;
+    // ---------- SQLite 版本（限流的 UPSERT 语法依赖 ≥ 3.24） ----------
     $sqliteVersion = '';
     try {
         $dbVersion = @getDb()->query('SELECT sqlite_version()');
@@ -113,7 +115,19 @@ function getLocalEnvironmentChecks() {
     } catch (Exception $e) {
         $sqliteVersion = '';
     }
-    $freeSpace = @disk_free_space(__DIR__);
+    $sqliteOk = $sqliteVersion !== '' && version_compare($sqliteVersion, '3.24.0', '>=');
+    $checks[] = [
+        'name' => 'sqlite_version',
+        'label' => 'SQLite 版本（≥ 3.24）',
+        'required' => true,
+        'ok' => $sqliteOk,
+        'detail' => $sqliteVersion !== ''
+            ? '当前 SQLite ' . $sqliteVersion . '（频率限制的 UPSERT 写入需要 3.24+，过低会导致限流失效）'
+            : '无法获取 SQLite 版本',
+        'group' => '必需',
+    ];
+
+    // ---------- 环境信息（只读展示） ----------
     $environment = [
         'php_version' => PHP_VERSION . '（' . PHP_SAPI . '）',
         'server_software' => $_SERVER['SERVER_SOFTWARE'] ?? '未知',

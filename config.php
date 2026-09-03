@@ -9,11 +9,12 @@
 // 如需自定义，修改下方或改为从网站设置读取。
 date_default_timezone_set('Asia/Shanghai');
 
-// 确保目录存在
+// 确保目录存在（一律基于 __DIR__ 绝对路径，避免依赖进程 CWD 在建错位置）
 $requiredDirs = ['data', 'admin/logs', 'data/cache', 'data/backups', 'data/update_cache'];
 foreach ($requiredDirs as $dir) {
-    if (!is_dir($dir)) {
-        mkdir($dir, 0755, true);
+    $absDir = __DIR__ . '/' . $dir;
+    if (!is_dir($absDir)) {
+        @mkdir($absDir, 0755, true);
     }
 }
 
@@ -43,7 +44,7 @@ define('TRUST_PROXY_HEADERS', false); // 是否信任代理头（如 X-Forwarded
 
 // ==================== 版本与自动更新配置 ====================
 
-define('APP_VERSION', '3.2.3.4'); // 当前应用版本号（Semantic Versioning）
+define('APP_VERSION', '3.2.3.5'); // 当前应用版本号（Semantic Versioning）
 define('APP_VERSION_FILE', __DIR__ . '/data/app_version.txt'); // 存储在数据库外的版本文件（备份）
 
 // GitHub 仓库配置
@@ -97,8 +98,19 @@ require_once __DIR__ . '/lib/log.php';
 require_once __DIR__ . '/lib/version.php';
 require_once __DIR__ . '/lib/update.php';
 require_once __DIR__ . '/lib/environment.php';
-// 定义是否在管理区域
-$isAdminArea = strpos($_SERVER['SCRIPT_NAME'] ?? '', '/admin/') !== false;
+// 定义是否在管理区域：
+// 用 SCRIPT_NAME 的目录名判断（admin/），支持子目录部署；
+// 避免旧式 strpos 匹配导致 /api.php/admin/x 这类 PATH_INFO 误判为管理区
+$scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+$isAdminArea = basename(dirname($scriptName)) === 'admin';
+
+// 是否运行在 HTTPS 下：直连看 HTTPS 标记；置于可信反向代理后（TRUST_PROXY_HEADERS=true）
+// 时再参考 X-Forwarded-Proto，否则 Cookie 不带 Secure 属性
+$isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+if (!$isHttps && TRUST_PROXY_HEADERS) {
+    $forwardedProto = strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+    $isHttps = $forwardedProto === 'https';
+}
 
 // 仅在管理区域启动会话
 if ($isAdminArea) {
@@ -109,7 +121,7 @@ if ($isAdminArea) {
             'lifetime' => 0,
             'path' => '/',
             'domain' => '',
-            'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+            'secure' => $isHttps,
             'httponly' => true,
             'samesite' => 'Lax'
         ]);

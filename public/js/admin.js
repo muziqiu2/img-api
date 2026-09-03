@@ -1,10 +1,11 @@
 // ============================================
 // 非阻塞 Toast 通知
 // ============================================
+// 转义 HTML 特殊字符（含引号，可安全用于属性上下文：& < > " '）
 function escapeHtml(s) {
-    var div = document.createElement('div');
-    div.textContent = (s == null) ? '' : String(s);
-    return div.innerHTML;
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
 }
 
 function showToast(message, type) {
@@ -213,13 +214,13 @@ function renderUpdateResult(data, fromCache, cacheTime) {
     if (data.env && !data.env.ok) {
         var html = '<div class="alert alert-danger">';
         html += '<i class="icon fas fa-exclamation-triangle"></i> 环境不满足更新要求:<ul class="mt-2">';
-        (data.env.errors || []).forEach(function (m) { html += '<li>' + m + '</li>'; });
+        (data.env.errors || []).forEach(function (m) { html += '<li>' + escapeHtml(m) + '</li>'; });
         html += '</ul></div>';
         document.getElementById('envWarningBox').innerHTML = html;
     } else if (data.env && data.env.warnings && data.env.warnings.length > 0) {
         var whtml = '<div class="alert alert-warning">';
         whtml += '<i class="icon fas fa-exclamation"></i> 警告:<ul class="mt-2">';
-        (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + m + '</li>'; });
+        (data.env.warnings || []).forEach(function (m) { whtml += '<li>' + escapeHtml(m) + '</li>'; });
         whtml += '</ul></div>';
         document.getElementById('envWarningBox').innerHTML = whtml;
     }
@@ -454,20 +455,29 @@ function renderUpdateHistory() {
     });
     html += '</tbody></table></div>';
 
-    // 分页控件
+    // 分页控件（页码经 data-page 传递 + 事件委托，不再使用内联 onclick）
     html += '<nav class="mt-2"><ul class="pagination pagination-sm justify-content-end mb-0">';
     html += '<li class="page-item' + (updateHistoryPage <= 1 ? ' disabled' : '') + '">';
-    html += '<a class="page-link" href="javascript:void(0)" onclick="updateHistoryGo(' + (updateHistoryPage - 1) + ')" aria-label="上一页">&laquo;</a></li>';
+    html += '<a class="page-link" href="#" data-page="' + (updateHistoryPage - 1) + '" aria-label="上一页">&laquo;</a></li>';
     for (var i = 1; i <= totalPages; i++) {
         html += '<li class="page-item' + (i === updateHistoryPage ? ' active' : '') + '">';
-        html += '<a class="page-link" href="javascript:void(0)" onclick="updateHistoryGo(' + i + ')">' + i + '</a></li>';
+        html += '<a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>';
     }
     html += '<li class="page-item' + (updateHistoryPage >= totalPages ? ' disabled' : '') + '">';
-    html += '<a class="page-link" href="javascript:void(0)" onclick="updateHistoryGo(' + (updateHistoryPage + 1) + ')" aria-label="下一页">&raquo;</a></li>';
+    html += '<a class="page-link" href="#" data-page="' + (updateHistoryPage + 1) + '" aria-label="下一页">&raquo;</a></li>';
     html += '</ul></nav>';
 
     box.innerHTML = html;
 }
+
+// 更新历史分页点击：事件委托（与文件内其它按钮的 data-* 委托风格统一，
+// 页码为纯整数，分页重渲染后无需重新绑定）
+document.addEventListener('click', function (e) {
+    var link = e.target && e.target.closest ? e.target.closest('#updateHistoryList a[data-page]') : null;
+    if (!link) return;
+    e.preventDefault();
+    updateHistoryGo(parseInt(link.getAttribute('data-page'), 10));
+});
 
 function updateHistoryGo(page) {
     var totalPages = Math.ceil(updateHistoryData.length / updateHistoryPageSize);

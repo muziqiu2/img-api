@@ -64,8 +64,6 @@
                             <button type="submit" name="add_urls" class="btn btn-primary">
                                 <i class="fas fa-plus"></i> 添加图片链接
                             </button>
-                            <?php if (!empty($urls)): ?>
-                            <?php endif; ?>
                         </form>
                     </div>
                 </div>
@@ -95,7 +93,7 @@
                                 <tr>
                                     <td><input type="checkbox" class="url-checkbox" value="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>" onchange="updateDeleteButton()"></td>
                                     <td>
-                                        <a href="<?php echo htmlspecialchars($url); ?>" target="_blank" title="<?php echo htmlspecialchars($url); ?>">
+                                        <a href="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>" target="_blank" title="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>">
                                             <?php echo htmlspecialchars(strlen($url) > 80 ? substr($url, 0, 80) . '...' : $url); ?>
                                         </a>
                                     </td>

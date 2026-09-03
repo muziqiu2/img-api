@@ -15,7 +15,14 @@ function applyRateLimit($key, $maxRequests, $windowSeconds) {
     if (rateLimitCanUseApcu()) {
         return applyRateLimitApcu($key, $maxRequests, $windowSeconds);
     }
-    return applyRateLimitDb($key, $maxRequests, $windowSeconds);
+    try {
+        return applyRateLimitDb($key, $maxRequests, $windowSeconds);
+    } catch (Throwable $e) {
+        // SQLite 版本过旧（UPSERT 语法需 3.24+）或其它数据库异常：保守放行并记录，
+        // 避免限流系统自身故障导致整个 API 不可用（环境检测页已提供版本检测项）
+        @error_log('[img-api] 限流计数异常（已放行）: ' . $e->getMessage());
+        return true;
+    }
 }
 
 // APCu 固定窗口计数：按时间窗口分桶，窗口过期由 TTL 自动清理，无需手动 DELETE。

@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     
     if (isAccountLocked()) {
         $config = getUserConfig();
-        $remainingTime = max(0, ($config['locked_until'] - time()) / 60);
+        $remainingTime = max(0, (($config['locked_until'] ?? 0) - time()) / 60);
         $error = "账户已临时锁定，请 " . number_format($remainingTime, 0) . " 分钟后再试";
     }
     elseif (!validateCsrfToken($token)) {
@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 $lockMessage = '';
 if (isAccountLocked()) {
     $config = getUserConfig();
-    $remainingTime = max(0, ($config['locked_until'] - time()) / 60);
+    $remainingTime = max(0, (($config['locked_until'] ?? 0) - time()) / 60);
     $lockMessage = "账户已临时锁定，请 " . number_format($remainingTime, 0) . " 分钟后再试";
 }
 ?>
@@ -93,7 +93,7 @@ if (isAccountLocked()) {
         <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
         <div class="mb-3">
             <label class="form-label" for="username">用户名</label>
-            <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" value="<?php echo htmlspecialchars($username); ?>" autocomplete="username" required <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
+            <input type="text" class="form-control" id="username" name="username" placeholder="请输入用户名" value="<?php echo htmlspecialchars($username, ENT_QUOTES); ?>" autocomplete="username" required <?php echo isAccountLocked() ? 'disabled' : ''; ?>>
         </div>
         <div class="mb-3">
             <label class="form-label" for="password">密码</label>
