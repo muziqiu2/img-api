@@ -154,6 +154,7 @@ function renderEnvironmentChecksHtml() {
             <h3 class="card-title">运行环境</h3>
         </div>
         <div class="card-body">
+            <div class="table-responsive">
             <table class="table table-bordered table-striped">
                 <tbody>
                 <?php foreach ($envData['environment'] as $key => $value): ?>
@@ -164,6 +165,7 @@ function renderEnvironmentChecksHtml() {
                 <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 
@@ -192,6 +194,7 @@ function renderEnvironmentChecksHtml() {
 
             <?php foreach ($grouped as $group => $items): ?>
                 <h6 class="text-muted mb-3"><?php echo htmlspecialchars($group, ENT_QUOTES); ?></h6>
+                <div class="table-responsive">
                 <table class="table table-bordered table-striped mb-4">
                     <thead>
                     <tr>
@@ -223,6 +226,7 @@ function renderEnvironmentChecksHtml() {
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div>
             <?php endforeach; ?>
         </div>
     </div>

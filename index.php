@@ -128,6 +128,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
 
             <div class="mb-4">
                 <h5><i class="fas fa-code me-2"></i>参数说明</h5>
+                <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
                         <tr>
@@ -155,6 +156,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                         </tr>
                     </tbody>
                 </table>
+                </div>
                 <p class="text-muted small mb-0">图片访问模式由后台「网站设置 → 图片访问模式」统一控制，调用方传参不再影响返回方式。</p>
             </div>
 
