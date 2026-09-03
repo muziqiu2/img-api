@@ -669,7 +669,16 @@ document.addEventListener('DOMContentLoaded', function () {
     var toggle = document.getElementById('sidebarToggle');
     var backdrop = document.getElementById('sidebarBackdrop');
 
-    var isMobile = function () { return window.innerWidth <= 991.98; };
+    // 移动端判定优先用 matchMedia：与 CSS 的 @media (max-width: 991.98px) 由同一引擎、同一条件求值，
+    // 保证 JS 分支与侧边栏实际显隐永远一致。个别手机浏览器 innerWidth 可能与媒体查询判定不符
+    // （例如内嵌 WebView/浏览器 UI 导致布局视口偏差），若只用 innerWidth 会误走桌面分支，
+    // 表现为"点击汉堡栏没反应"（侧边栏已被 CSS 隐藏，桌面分支仅切换 sidebar-collapsed 无可见变化）。
+    var isMobile = function () {
+        if (window.matchMedia) {
+            return window.matchMedia('(max-width: 991.98px)').matches;
+        }
+        return window.innerWidth <= 991.98;
+    };
 
     function setMobileDrawer(open) {
         if (!layout) return;
