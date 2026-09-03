@@ -31,13 +31,13 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
     <meta name="description" content="提供高质量随机二次元图片API服务，支持PC/移动端自适应">
     
     <!-- 本地资源 -->
-    <link href="public/css/bootstrap.min.css" rel="stylesheet">
-    <link href="public/css/all.min.css" rel="stylesheet">
-    <script src="public/js/jquery.min.js"></script>
-    <script src="public/js/chart.umd.min.js"></script>
-    <script src="public/js/clipboard.min.js"></script>
+    <link href="public/css/bootstrap.min.css?v=<?php echo APP_VERSION; ?>" rel="stylesheet">
+    <link href="public/css/all.min.css?v=<?php echo APP_VERSION; ?>" rel="stylesheet">
+    <script src="public/js/jquery.min.js?v=<?php echo APP_VERSION; ?>"></script>
+    <script src="public/js/chart.umd.min.js?v=<?php echo APP_VERSION; ?>"></script>
+    <script src="public/js/clipboard.min.js?v=<?php echo APP_VERSION; ?>"></script>
     
-    <link href="public/css/home.css" rel="stylesheet">
+    <link href="public/css/home.css?v=<?php echo APP_VERSION; ?>" rel="stylesheet">
 </head>
 <body>
     <div class="toast-notification" id="copyToast">
@@ -325,11 +325,11 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
         </div>
     </footer>
 
-    <script src="public/js/bootstrap.bundle.min.js"></script>
+    <script src="public/js/bootstrap.bundle.min.js?v=<?php echo APP_VERSION; ?>"></script>
     <script>
         // 把首页统计注入到 window.STATS，供外置 public/js/home.js 使用
         window.STATS = <?php echo json_encode($stats); ?>;
     </script>
-    <script src="public/js/home.js"></script>
+    <script src="public/js/home.js?v=<?php echo APP_VERSION; ?>"></script>
 </body>
 </html>

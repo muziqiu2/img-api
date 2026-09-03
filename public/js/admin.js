@@ -689,9 +689,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (toggle && layout) {
         toggle.addEventListener('click', function () {
-            if (isMobile()) {
-                layout.classList.toggle('sidebar-open');
-            } else {
+            // 始终切换"打开"态：移动端由 CSS 决定抽屉显隐（@media max-width: 991.98px），
+            // 桌面端该 class 无样式效果。这样即使视口判定偶发偏差，汉堡栏也一定有可见反馈，
+            // 不会出现"点了没反应"（侧边栏已被 CSS 隐藏却只切换了桌面折叠态）。
+            layout.classList.toggle('sidebar-open');
+            if (window.matchMedia('(min-width: 992px)').matches) {
                 layout.classList.toggle('sidebar-collapsed');
                 try {
                     localStorage.setItem('app_sidebar_collapsed', layout.classList.contains('sidebar-collapsed') ? '1' : '0');
