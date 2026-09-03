@@ -1,6 +1,6 @@
 <!-- 统计卡片 -->
                 <div class="row">
-                    <div class="col-lg-3 col-6">
+                    <div class="col-sm-6 col-lg-3">
                         <div class="small-box bg-info">
                             <div class="inner">
                                 <h3><?php echo number_format($stats['total'] ?? 0); ?></h3>
@@ -9,7 +9,7 @@
                             <div class="icon"><i class="fas fa-chart-line"></i></div>
                         </div>
                     </div>
-                    <div class="col-lg-3 col-6">
+                    <div class="col-sm-6 col-lg-3">
                         <div class="small-box bg-success">
                             <div class="inner">
                                 <h3><?php echo getImageCount('pc'); ?></h3>
@@ -18,7 +18,7 @@
                             <div class="icon"><i class="fas fa-desktop"></i></div>
                         </div>
                     </div>
-                    <div class="col-lg-3 col-6">
+                    <div class="col-sm-6 col-lg-3">
                         <div class="small-box bg-primary">
                             <div class="inner">
                                 <h3><?php echo getImageCount('pe'); ?></h3>
@@ -27,7 +27,7 @@
                             <div class="icon"><i class="fas fa-mobile-alt"></i></div>
                         </div>
                     </div>
-                    <div class="col-lg-3 col-6">
+                    <div class="col-sm-6 col-lg-3">
                         <div class="small-box bg-warning">
                             <div class="inner">
                                 <h3><?php echo $stats['daily'][date('Y-m-d')]['total'] ?? 0; ?></h3>

@@ -215,6 +215,9 @@ if ($mustChangePassword && $currentSection !== 'user') {
         </nav>
     </aside>
 
+    <!-- 移动端抽屉遮罩：点击遮罩关闭侧边栏 -->
+    <div class="app-sidebar-backdrop" id="sidebarBackdrop"></div>
+
     <!-- 主区域 -->
     <div class="app-main">
 
