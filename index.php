@@ -266,7 +266,7 @@ $safeHost = htmlspecialchars($safeHost, ENT_QUOTES, 'UTF-8');
                                     <pre class="bg-light p-3 rounded" style="white-space:pre-wrap;">{
     "success": true,
     "type": "pc",
-    "mode": "<?php echo htmlspecialchars($imageMode); ?>",
+    "mode": "<?php echo htmlspecialchars($imageMode, ENT_QUOTES); ?>",
     "cache": 0,
     "url": "https://.../image.webp"
 }</pre>

@@ -21,11 +21,9 @@ function getImageCount($type = 'pc') {
 
 function getImageUrls($type = 'pc', $page = 1, $perPage = 20) {
     $db = getDb();
-    
-    // 获取总数
-    $stmt = $db->prepare("SELECT COUNT(*) as cnt FROM image_urls WHERE type = ?");
-    $stmt->execute([$type]);
-    $total = $stmt->fetch()['cnt'] ?? 0;
+
+    // 总数复用 getImageCount() 的计数缓存，避免后台每次翻页重复 COUNT(*)
+    $total = getImageCount($type);
     
     $totalPages = $total > 0 ? ceil($total / $perPage) : 0;
     $page = max(1, min($page, max(1, $totalPages)));

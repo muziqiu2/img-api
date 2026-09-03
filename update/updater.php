@@ -464,17 +464,10 @@ class AppUpdater
             $fileCount++;
         }
 
-        // 同时备份数据库文件（单独记录）
-        if (file_exists(DB_FILE)) {
-            // 启用 WAL 时，先执行 checkpoint 把 -wal 中的事务合并回主库，确保备份的是最新一致快照
-            try {
-                getDb()->query('PRAGMA wal_checkpoint(TRUNCATE)')->fetchAll();
-            } catch (Exception $e) {
-                // checkpoint 失败不影响备份主流程
-            }
-            $zip->addFile(DB_FILE, 'data/app.db');
-            $fileCount++;
-        }
+        // 不再把 data/app.db 打入备份包：
+        // 1) 回滚（自动/手动）始终跳过 data/ 受保护路径，备份中的数据库永远不会被恢复，留之无用；
+        // 2) 数据库中存有 github_token 等敏感配置，随备份 zip 落地服务器等于扩大泄露面。
+        // 如需数据库留档，请直接复制 data/ 目录（勿与本备份 zip 混用）。
 
         $zip->close();
 

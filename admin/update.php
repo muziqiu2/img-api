@@ -28,12 +28,24 @@ if (!IS_LOGGED_IN) {
     exit;
 }
 
-// CSRF 验证（仅接受 POST 请求体中的 token，避免 token 出现在 URL 中泄露）
+// CSRF 验证：
+// - 写操作：仅接受 POST 请求体中的 token（避免 token 出现在 URL 中泄露）
+// - 只读操作：支持 GET，但要求同源 AJAX 标识头 X-Requested-With，
+//   防止第三方页面通过 <img>/<script>/<form> 等跨站 GET 触发读取
 $csrfToken = $_POST['csrf_token'] ?? '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken($csrfToken)) {
+$isPostRequest = $_SERVER['REQUEST_METHOD'] === 'POST';
+if ($isPostRequest && !validateCsrfToken($csrfToken)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => 'CSRF token 验证失败'], JSON_UNESCAPED_UNICODE);
     exit;
+}
+if (!$isPostRequest) {
+    $ajaxHeader = $_SERVER['HTTP_X_REQUESTED_WITH'] ?? '';
+    if ($ajaxHeader !== 'XMLHttpRequest') {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => '非法的请求来源'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 }
 
 // 动作类型（必须在频率限制判断前定义）
@@ -345,7 +357,8 @@ try {
             http_response_code(400);
             echo json_encode(['success' => false, 'error' => '无效的 action 参数'], JSON_UNESCAPED_UNICODE);
     }
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    // 使用 Throwable 同时捕获 Exception 与 Error（TypeError 等），确保异常路径永远返回 JSON 而非 PHP 致命输出
     @error_log('[img-api] 更新接口异常: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => '服务器内部错误，请稍后再试或查看服务器日志'], JSON_UNESCAPED_UNICODE);
