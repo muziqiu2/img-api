@@ -662,22 +662,25 @@ if (siteSettingsForm) {
 
 // ============================================
 // 侧边栏折叠（替代原 AdminLTE push-menu）
+// - 桌面端：折叠记忆；移动端：抽屉 + 遮罩（点击遮罩/ESC 关闭）
 // ============================================
 document.addEventListener('DOMContentLoaded', function () {
     var layout = document.getElementById('appLayout');
     var toggle = document.getElementById('sidebarToggle');
+    var backdrop = document.getElementById('sidebarBackdrop');
 
-    function syncState() {
-        // 桌面端：记忆折叠状态；移动端：抽屉由横幅 class 控制
+    var isMobile = function () { return window.innerWidth <= 991.98; };
+
+    function setMobileDrawer(open) {
         if (!layout) return;
-        if (window.innerWidth > 991.98) {
-            layout.classList.remove('sidebar-open');
+        if (isMobile()) {
+            layout.classList.toggle('sidebar-open', !!open);
         }
     }
 
     if (toggle && layout) {
         toggle.addEventListener('click', function () {
-            if (window.innerWidth <= 991.98) {
+            if (isMobile()) {
                 layout.classList.toggle('sidebar-open');
             } else {
                 layout.classList.toggle('sidebar-collapsed');
@@ -685,19 +688,35 @@ document.addEventListener('DOMContentLoaded', function () {
                     localStorage.setItem('app_sidebar_collapsed', layout.classList.contains('sidebar-collapsed') ? '1' : '0');
                 } catch (e) {}
             }
-            syncState();
         });
     }
 
+    // 移动端：点击遮罩或按 ESC 关闭抽屉
+    if (backdrop) {
+        backdrop.addEventListener('click', function () { setMobileDrawer(false); });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') setMobileDrawer(false);
+    });
+
     // 恢复上次折叠状态
-    if (layout && window.innerWidth > 991.98) {
+    if (layout && !isMobile()) {
         try {
             if (localStorage.getItem('app_sidebar_collapsed') === '1') {
                 layout.classList.add('sidebar-collapsed');
             }
         } catch (e) {}
     }
-    document.addEventListener('resize', syncState);
+
+    // 视口变化：切到桌面端时收起移动端抽屉，切到移动端时移除桌面折叠态
+    document.addEventListener('resize', function () {
+        if (!layout) return;
+        if (isMobile()) {
+            layout.classList.remove('sidebar-collapsed');
+        } else {
+            layout.classList.remove('sidebar-open');
+        }
+    });
 });
 
 // ============================================
