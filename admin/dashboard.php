@@ -160,11 +160,11 @@ if ($mustChangePassword && $currentSection !== 'user') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>魔法师API - 管理后台</title>
     <!-- Font Awesome -->
-    <link rel="stylesheet" href="../public/css/all.min.css">
+    <link rel="stylesheet" href="../public/css/all.min.css?v=<?php echo APP_VERSION; ?>">
     <!-- Bootstrap 5.3 -->
-    <link rel="stylesheet" href="../public/css/bootstrap.min.css">
+    <link rel="stylesheet" href="../public/css/bootstrap.min.css?v=<?php echo APP_VERSION; ?>">
     <!-- Admin theme -->
-    <link rel="stylesheet" href="../public/css/admin.css">
+    <link rel="stylesheet" href="../public/css/admin.css?v=<?php echo APP_VERSION; ?>">
 </head>
 <body class="app-layout" id="appLayout">
 
@@ -311,9 +311,9 @@ if ($mustChangePassword && $currentSection !== 'user') {
 </div>
 
 <!-- jQuery -->
-<script src="../public/js/jquery.min.js"></script>
+<script src="../public/js/jquery.min.js?v=<?php echo APP_VERSION; ?>"></script>
 <!-- Bootstrap -->
-<script src="../public/js/bootstrap.bundle.min.js"></script>
+<script src="../public/js/bootstrap.bundle.min.js?v=<?php echo APP_VERSION; ?>"></script>
 <!-- 自定义确认模态框处理 -->
 <script>
     // APP 配置由 PHP 注入，供外置 public/js/admin.js 读取（csrf/version/section）
@@ -323,6 +323,6 @@ if ($mustChangePassword && $currentSection !== 'user') {
         section: <?php echo json_encode($currentSection, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>
     };
 </script>
-<script src="../public/js/admin.js"></script>
+<script src="../public/js/admin.js?v=<?php echo APP_VERSION; ?>"></script>
 </body>
 </html>

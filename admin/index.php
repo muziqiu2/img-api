@@ -66,9 +66,9 @@ if (isAccountLocked()) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>魔法师API - 登录</title>
-    <link rel="stylesheet" href="../public/css/all.min.css">
-    <link rel="stylesheet" href="../public/css/bootstrap.min.css">
-    <link rel="stylesheet" href="../public/css/admin.css">
+    <link rel="stylesheet" href="../public/css/all.min.css?v=<?php echo APP_VERSION; ?>">
+    <link rel="stylesheet" href="../public/css/bootstrap.min.css?v=<?php echo APP_VERSION; ?>">
+    <link rel="stylesheet" href="../public/css/admin.css?v=<?php echo APP_VERSION; ?>">
 </head>
 <body class="app-login">
 <div class="app-login-box">
@@ -109,7 +109,7 @@ if (isAccountLocked()) {
     </p>
 </div>
 
-<script src="../public/js/jquery.min.js"></script>
-<script src="../public/js/bootstrap.bundle.min.js"></script>
+<script src="../public/js/jquery.min.js?v=<?php echo APP_VERSION; ?>"></script>
+<script src="../public/js/bootstrap.bundle.min.js?v=<?php echo APP_VERSION; ?>"></script>
 </body>
 </html>
