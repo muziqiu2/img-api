@@ -371,8 +371,9 @@ function loadBackupList() {
             data.backups.forEach(function(b) {
                 html += '<tr>';
                 // filename/size/time 均来自服务端备份文件名，统一转义；按钮通过 data-* + 事件委托传参，
-                // 避免内联 onclick 字符串拼接造成的 XSS 与 JS 语法破坏
-                html += '<td>' + escapeHtml(b.filename) + '</td>';
+                // 避免内联 onclick 字符串拼接造成的 XSS 与 JS 语法破坏。
+                // 文件名列使用 backup-name 类（超长省略号 + title 提示），避免移动端长文件名换行撑乱表格
+                html += '<td class="backup-name" title="' + escapeHtml(b.filename) + '">' + escapeHtml(b.filename) + '</td>';
                 html += '<td>' + escapeHtml(b.size) + ' KB</td>';
                 html += '<td>' + escapeHtml(b.time) + '</td>';
                 html += '<td class="nowrap">';
@@ -404,38 +405,75 @@ function bindBackupActions(container) {
     };
 }
 
+// 更新历史：前端分页状态（数据由后端一次性返回，前端分页展示，避免记录多时页面过长）
+var updateHistoryData = [];
+var updateHistoryPage = 1;
+var updateHistoryPageSize = 10;
+
 function loadUpdateHistory() {
     fetch('update.php?action=logs', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            var box = document.getElementById('updateHistoryList');
-            if (!data.success || !data.logs || data.logs.length === 0) {
-                box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
-                return;
-            }
-            var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
-            data.logs.forEach(function(log) {
-                var statusClass = 'text-bg-info';
-                var statusText = log.status;
-                if (log.status === 'success') { statusClass = 'text-bg-success'; statusText = '成功'; }
-                else if (log.status === 'failed') { statusClass = 'text-bg-danger'; statusText = '失败'; }
-                else if (log.status === 'rollback') { statusClass = 'text-bg-warning'; statusText = '回滚'; }
-                html += '<tr>';
-                // 数据库中 username/message 等一律转义，防存储型 XSS
-                html += '<td>' + escapeHtml(log.timestamp || '-') + '</td>';
-                html += '<td>' + escapeHtml(log.from_version || '-') + '</td>';
-                html += '<td>' + escapeHtml(log.to_version || '-') + '</td>';
-                html += '<td><span class="badge ' + statusClass + '">' + escapeHtml(statusText) + '</span></td>';
-                html += '<td>' + escapeHtml(log.username || '-') + '</td>';
-                html += '<td>' + escapeHtml(log.message || '-') + '</td>';
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
-            box.innerHTML = html;
+            updateHistoryData = (data.success && data.logs) ? data.logs : [];
+            updateHistoryPage = 1;
+            renderUpdateHistory();
         })
         .catch(function() {
             document.getElementById('updateHistoryList').innerHTML = '<div class="text-danger">加载失败</div>';
         });
+}
+
+function renderUpdateHistory() {
+    var box = document.getElementById('updateHistoryList');
+    if (!updateHistoryData.length) {
+        box.innerHTML = '<div class="text-center text-muted py-3"><i class="fas fa-inbox"></i> 暂无更新记录</div>';
+        return;
+    }
+    var totalPages = Math.ceil(updateHistoryData.length / updateHistoryPageSize);
+    if (updateHistoryPage < 1) updateHistoryPage = 1;
+    if (updateHistoryPage > totalPages) updateHistoryPage = totalPages;
+    var start = (updateHistoryPage - 1) * updateHistoryPageSize;
+    var pageData = updateHistoryData.slice(start, start + updateHistoryPageSize);
+
+    var html = '<div class="table-responsive"><table class="table table-striped table-wrap-text"><thead><tr><th>时间</th><th>从版本</th><th>到版本</th><th>状态</th><th>操作人</th><th>说明</th></tr></thead><tbody>';
+    pageData.forEach(function(log) {
+        var statusClass = 'text-bg-info';
+        var statusText = log.status;
+        if (log.status === 'success') { statusClass = 'text-bg-success'; statusText = '成功'; }
+        else if (log.status === 'failed') { statusClass = 'text-bg-danger'; statusText = '失败'; }
+        else if (log.status === 'rollback') { statusClass = 'text-bg-warning'; statusText = '回滚'; }
+        html += '<tr>';
+        // 数据库中 username/message 等一律转义，防存储型 XSS
+        html += '<td>' + escapeHtml(log.timestamp || '-') + '</td>';
+        html += '<td>' + escapeHtml(log.from_version || '-') + '</td>';
+        html += '<td>' + escapeHtml(log.to_version || '-') + '</td>';
+        html += '<td><span class="badge ' + statusClass + '">' + escapeHtml(statusText) + '</span></td>';
+        html += '<td>' + escapeHtml(log.username || '-') + '</td>';
+        html += '<td>' + escapeHtml(log.message || '-') + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // 分页控件
+    html += '<nav class="mt-2"><ul class="pagination pagination-sm justify-content-end mb-0">';
+    html += '<li class="page-item' + (updateHistoryPage <= 1 ? ' disabled' : '') + '">';
+    html += '<a class="page-link" href="javascript:void(0)" onclick="updateHistoryGo(' + (updateHistoryPage - 1) + ')" aria-label="上一页">&laquo;</a></li>';
+    for (var i = 1; i <= totalPages; i++) {
+        html += '<li class="page-item' + (i === updateHistoryPage ? ' active' : '') + '">';
+        html += '<a class="page-link" href="javascript:void(0)" onclick="updateHistoryGo(' + i + ')">' + i + '</a></li>';
+    }
+    html += '<li class="page-item' + (updateHistoryPage >= totalPages ? ' disabled' : '') + '">';
+    html += '<a class="page-link" href="javascript:void(0)" onclick="updateHistoryGo(' + (updateHistoryPage + 1) + ')" aria-label="下一页">&raquo;</a></li>';
+    html += '</ul></nav>';
+
+    box.innerHTML = html;
+}
+
+function updateHistoryGo(page) {
+    var totalPages = Math.ceil(updateHistoryData.length / updateHistoryPageSize);
+    if (page < 1 || page > totalPages) return;
+    updateHistoryPage = page;
+    renderUpdateHistory();
 }
 
 function doRollback(filename) {

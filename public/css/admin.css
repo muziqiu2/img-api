@@ -305,6 +305,18 @@ body.app-layout {
 .table-wrap-text td { overflow-wrap: anywhere; word-break: break-word; }
 .table-wrap-text code { word-break: break-all; white-space: normal; }
 .table-wrap-text .nowrap { white-space: nowrap; }
+/* 备份文件名字段：超长时省略显示，悬停 title 查看完整名称，避免移动端换行撑乱表格 */
+.table-wrap-text .backup-name {
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+@media (max-width: 767.98px) {
+    .table-wrap-text .backup-name {
+        max-width: 120px;
+    }
+}
 
 /* ---------- 登录页（替代原 AdminLTE login-page/login-box） ---------- */
 body.app-login {
