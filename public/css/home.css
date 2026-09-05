@@ -330,3 +330,20 @@ footer a:hover { color: var(--app-brand); }
     .stat-value { font-size: 1.5rem; }
     .paper-card { padding: 1.1rem 1rem 1.25rem; }
 }
+
+/* ---------- 微交互增强（克制版：轻位移 + 聚焦环 + 按压回弹） ---------- */
+.copy-btn {
+    transition: transform .12s ease, background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+}
+.copy-btn:hover { transform: translateY(-1px); box-shadow: 0 1px 3px rgba(16, 24, 40, .12); }
+.copy-btn:active { transform: translateY(0); }
+.copy-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(47, 111, 237, .28); }
+
+.admin-link { transition: transform .12s ease, background-color .15s ease, border-color .15s ease, color .15s ease; }
+.admin-link:hover { transform: translateY(-1px); }
+.admin-link:active { transform: translateY(0); }
+.admin-link:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(47, 111, 237, .28); }
+
+@media (prefers-reduced-motion: reduce) {
+    .copy-btn, .admin-link { transition: none !important; }
+}

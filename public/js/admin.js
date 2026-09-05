@@ -310,7 +310,7 @@ function doUpdate() {
 function startUpdate() {
     var btn = document.getElementById('updateBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+    btn.innerHTML = '<span class="app-spinner app-spinner-sm"></span> 更新中...';
     document.getElementById('progressBar').style.display = 'block';
     document.getElementById('updateLogBox').style.display = 'block';
     document.getElementById('updateLog').textContent = '';
@@ -580,7 +580,7 @@ function saveGithubToken() {
     formData.append('csrf_token', updateCsrfToken);
 
     document.getElementById('saveTokenBtn').disabled = true;
-    document.getElementById('saveTokenBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...';
+    document.getElementById('saveTokenBtn').innerHTML = '<span class="app-spinner app-spinner-sm"></span> 保存中...';
 
     fetch('update.php', {
         method: 'POST',
@@ -664,7 +664,9 @@ function loadSiteSettings() {
             document.getElementById('rate_limit_api').value = data.rate_limit_api || '';
             document.getElementById('rate_limit_admin').value = data.rate_limit_admin || '';
             document.getElementById('image_mode').value = data.image_mode || 'redirect';
-            document.getElementById('enable_json').value = data.enable_json || '0';
+            var enableJson = (data.enable_json === 1 || data.enable_json === '1');
+            document.getElementById('enable_json').checked = enableJson;
+            updateJsonToggleState();
             // 0 是合法值（表示禁用自动落库），不能用 || 兜底，否则会误显示为空
             var flushInterval = data.stats_auto_flush_interval;
             document.getElementById('stats_auto_flush_interval').value = (flushInterval === 0 || flushInterval === '0') ? '0' : (flushInterval || '');
@@ -684,7 +686,7 @@ if (siteSettingsForm) {
     var submitBtn = this.querySelector('button[type="submit"]');
     var originalHtml = submitBtn.innerHTML;
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...';
+    submitBtn.innerHTML = '<span class="app-spinner app-spinner-sm"></span> 保存中...';
 
     fetch('update.php', {
         method: 'POST',
@@ -707,6 +709,26 @@ if (siteSettingsForm) {
     });
 });
 }
+
+// 纸感开关：enable_json 复选框 → 隐藏 input 值(0/1) 同步状态文案
+// 用隐藏 input 始终携带 name=enable_json 提交，覆盖"未勾选时 checkbox 不进 FormData"导致无法存 0 的问题
+function updateJsonToggleState() {
+    var cb = document.getElementById('enable_json');
+    if (!cb) return;
+    var on = cb.checked;
+    var hidden = document.getElementById('enable_json_hidden');
+    if (hidden) hidden.value = on ? '1' : '0';
+    var sw = cb.closest('.app-switch');
+    var state = sw ? sw.querySelector('.app-switch-state') : null;
+    if (state) state.textContent = on ? '开启' : '关闭';
+}
+document.addEventListener('DOMContentLoaded', function () {
+    var jsonToggle = document.getElementById('enable_json');
+    if (jsonToggle) {
+        jsonToggle.addEventListener('change', updateJsonToggleState);
+        updateJsonToggleState();
+    }
+});
 
 // ============================================
 // 侧边栏折叠（替代原 AdminLTE push-menu）

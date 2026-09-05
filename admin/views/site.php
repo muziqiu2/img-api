@@ -42,12 +42,16 @@
                                 <small class="form-text text-muted">代理模式：所有 API（api.php/pc.php/pe.php）由服务器代为下载并转发图片，用户无法看到真实图片 URL，可隐藏图片链接；302 跳转模式：API 直接重定向到真实图片 URL。此设置对全部 API 生效，调用方传参不再影响返回方式。</small>
                             </div>
                             <div class="mb-3">
-                                <label for="enable_json" class="form-label">JSON 格式输出</label>
-                                <select class="form-select" id="enable_json" name="enable_json">
-                                    <option value="0">关闭（默认）</option>
-                                    <option value="1">开启</option>
-                                </select>
-                                <small class="form-text text-warning">开启后，可在 api.php/pc.php/pe.php 后加 <code>?format=json</code> 返回图片地址的 JSON 数据。注意：当「图片访问模式」为代理模式时，JSON 会返回真实的图片 URL，从而暴露代理模式本应隐藏的图片链接，请仅在确认无泄露风险时开启。</small>
+                                <div class="form-label mb-2">JSON 格式输出</div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <label class="app-switch">
+                                        <input type="checkbox" id="enable_json">
+                                        <span class="app-switch-track" aria-hidden="true"></span>
+                                        <span class="app-switch-state">关闭</span>
+                                    </label>
+                                    <input type="hidden" name="enable_json" id="enable_json_hidden" value="0">
+                                </div>
+                                <small class="form-text text-warning d-block mt-1">开启后，可在 api.php/pc.php/pe.php 后加 <code>?format=json</code> 返回图片地址的 JSON 数据。注意：当「图片访问模式」为代理模式时，JSON 会返回真实的图片 URL，从而暴露代理模式本应隐藏的图片链接，请仅在确认无泄露风险时开启。</small>
                             </div>
                             <hr>
                             <h6 class="text-muted mb-3">频率限制设置</h6>
