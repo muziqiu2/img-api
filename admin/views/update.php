@@ -123,7 +123,7 @@
                     </div>
                     <div class="card-body">
                         <div id="updateHistoryList">
-                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> 正在加载更新历史...</div>
+                            <div class="text-center text-muted py-3"><span class="app-spinner app-spinner-sm"></span> 正在加载更新历史...</div>
                         </div>
                     </div>
                 </div>
