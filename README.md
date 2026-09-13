@@ -1,206 +1,145 @@
 # 魔法师随机图片API
 
-一个简单易用的随机图片API服务，支持PC/移动端自适应，提供管理后台和统计功能。
+![Version](https://img.shields.io/badge/version-3.2.3.5-blue)
+![PHP](https://img.shields.io/badge/PHP-%3E%3D7.4-8892BF)
+![Storage](https://img.shields.io/badge/storage-SQLite-003B57)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-## 功能特性
+给博客、小程序、桌面软件提供一个"换不完"的图库：纯 PHP + SQLite，传到服务器就能跑，一行 `<img>` 标签接入，自带管理后台和调用统计，不用装 MySQL。
 
-- 🌐 自动识别设备类型，PC / 移动端返回不同图库
-- 🖼️ 多种输出方式：302 跳转、代理隐藏真实图片链接、JSON 地址输出
-- 🎛️ 灵活的缓存控制
-- 📊 调用统计与可视化报表，支持定时自动落库
-- 🖥️ 功能完善的管理后台：图片管理、操作日志、网站信息自定义
-- 🔍 后台环境检测：运行环境、依赖扩展与目录权限一键自检
-- 🔄 一键在线更新：基于 GitHub Releases，更新前自动备份、失败自动回滚
-- 🔐 多层安全防护：SSRF 防护、CSRF Token、登录锁定、频率限制、XSS 过滤
-- 🗄️ SQLite 单文件存储，部署与迁移便捷
-- ⚡ 可选 APCu 内存加速，从容应对高并发
+| 项目首页 | 管理后台 |
+|---|---|
+| ![首页统计](docs/screenshots/home.png) | ![管理后台](docs/screenshots/admin.png) |
+
+## 10 秒接入
+
+把下面的标签放进任意网页，每次加载都会换一张图：
+
+```html
+<img src="https://your-domain.com/api.php" alt="随机图片">
+```
+
+- 只要 PC 端图库：`pc.php`；只要移动端图库：`pe.php`
+- 加缓存：`?cache=3600`（秒数，最长 30 天）
+
+> 接口会 302 跳转到随机图片。若不想暴露真实图床地址，在后台「网站设置」把访问模式切到**代理模式**，图片将由服务器转发，调用方完全看不到原始 URL。
+
+## 核心特性
+
+- **设备自适应**：同一接口自动区分 PC / 移动端，返回不同图库
+- **两种出图模式**：302 跳转（零开销）或代理转发（隐藏图床），后台一键切换
+- **调用统计**：按日统计调用量与 PC/移动端分布，首页图表直接看趋势，数据自动落库留存
+- **管理后台**：图片增删与批量导入、操作日志、站点信息自定义，开箱即用
+- **一键在线更新**：基于 GitHub Releases，更新前自动备份，失败自动回滚
+- **部署轻**：SQLite 单文件存储，无外部数据库依赖；有 APCu 时自动启用内存计数，高并发更从容
 
 ## 快速开始
 
 ### 环境要求
 
-- PHP 7.4 或更高版本
-- PHP PDO SQLite 扩展（通常默认开启）
-- Apache/Nginx Web服务器
-- 开启 curl 扩展（推荐，用于图片 SSRF 防护与自动更新）
-- 开启 zip 扩展（自动更新功能需要）
+- PHP 7.4+（PDO SQLite 扩展，通常默认开启）
+- Apache 或 Nginx
+- 可选：curl 扩展（代理模式与自动更新）、zip 扩展（自动更新）、APCu（性能加速）
 
-### 安装部署
+### 安装
 
-1. 将项目文件上传到Web服务器目录
-2. 确保以下目录可写：
-   - `data/`
-   - `admin/logs/`
-   - `data/cache/`
-   - `data/backups/`
-   - `data/update_cache/`
-3. 访问项目首页即可使用
+```bash
+# 方式一：git clone
+git clone https://github.com/muziqiu2/img-api.git
+# 方式二：下载 Release 包
+# https://github.com/muziqiu2/img-api/releases/latest
+```
 
-### Nginx 部署（重要）
+1. 将代码放到站点目录，确保 `data/` 与 `admin/logs/` 目录可写
+2. 浏览器访问站点首页即可使用，后台入口为 `/admin/`
+3. 建议部署完成后到 后台 → 环境检测 跑一次自检
 
-项目自带的 `.htaccess` 防护**仅对 Apache 生效**。若使用 Nginx，必须参考根目录的 `nginx.conf.example` 配置规则，至少确保以下路径不可被 Web 访问（否则 `data/app.db` 数据库与 `data/backups/*.zip` 备份包可被公网直接下载，造成源码与数据泄露）：
+### 默认账号
+
+用户名 `admin`，密码 `123456`。**首次登录会强制要求修改密码**，请勿使用默认密码跑在生产环境。
+
+### Nginx 用户必读
+
+> [!WARNING]
+> 项目自带的 `.htaccess` 仅对 Apache 生效。Nginx 用户必须把下面的规则加进 server 块，
+> 否则 `data/app.db`（含后台密码哈希与 GitHub Token）和备份包可被公网直接下载。
 
 ```nginx
-# 敏感目录：data/ 与 admin/logs/
-location ~ ^/(data|admin\/logs)/ {
-    deny all;
-    return 403;
-}
-# 压缩包与隐藏文件兜底
+location ~ ^/(data|admin\/logs)/ { deny all; return 403; }
 location ~* \.zip$ { deny all; return 403; }
 location ~ /\.     { deny all; return 403; }
 ```
 
-部署完成后可访问 `admin/` → 系统更新 → 环境检查，查看是否有目录暴露相关警告。
+完整示例见 [`nginx.conf.example`](nginx.conf.example)。
 
-### 默认账号
+## API 使用说明
 
-- 用户名：`admin`
-- 密码：`123456`
-
-⚠️ **重要**：首次登录后请立即修改默认密码！
-
-## API使用说明
-
-### 基础接口
-
-#### 自动识别设备
-```
-https://your-domain.com/api.php
-```
-
-#### PC端专用
-```
-https://your-domain.com/pc.php
-```
-
-#### 移动端专用
-```
-https://your-domain.com/pe.php
-```
-
-### 请求参数
+| 接口 | 说明 |
+|------|------|
+| `GET /api.php` | 自动识别设备，返回对应图库的随机图片 |
+| `GET /pc.php` | 仅 PC 端图库 |
+| `GET /pe.php` | 仅移动端图库 |
 
 | 参数 | 可选值 | 说明 |
 |------|--------|------|
-| `cache` | 数字(秒) | 缓存时间，默认0秒（不缓存） |
+| `cache` | 数字（秒） | 浏览器缓存时间，默认 0（不缓存），上限 2592000（30 天） |
 
-> 图片访问模式由后台「网站设置 → 图片访问模式」统一控制，调用方传参不再影响返回方式。
-
-### 图片访问模式
-
-#### 1. 302 跳转模式（默认）
-API 直接302重定向到随机图片URL，适合`<img>`标签直接使用。
-
-#### 2. 代理模式
-服务器代为下载图片并转发给用户，用户无法看到真实图片URL，可隐藏图片链接。适合不希望暴露真实图片来源的场景。
+> 图片访问模式（302 / 代理）由后台「网站设置」统一控制，调用方无需传参。`format=json` 输出图片地址列表，需在后台开启。
 
 ### 调用示例
 
 ```html
-<!-- 直接显示图片 -->
-<img src="https://your-domain.com/api.php" alt="随机图片">
+<!-- 随机图片，1 小时浏览器缓存 -->
+<img src="https://your-domain.com/pe.php?cache=3600" alt="壁纸">
 
-<!-- 启用1小时缓存 -->
-<img src="https://your-domain.com/pe.php?cache=3600" alt="随机图片">
+<!-- 代理模式效果示例：调用方拿到的始终是你自己的域名 -->
+<img src="https://your-domain.com/api.php" alt="随机图片">
 ```
 
 ## 管理后台
 
-访问 `https://your-domain.com/admin/` 进入管理后台。
+访问 `/admin/` 进入。主要功能：
 
-### 功能模块
+- **图片管理**：逐条添加或批量导入图片链接，PC / 移动端分类管理
+- **操作日志**：记录后台操作的时间、账号与来源 IP
+- **网站设置**：站点标题、图片访问模式、JSON 输出开关等
+- **系统更新**：检查并一键更新到最新版本，支持备份管理与一键回滚，可配置 GitHub Token（私有仓库必需）
+- **环境检测**：PHP 版本、依赖扩展、目录权限、SQLite 版本一键自检
 
-1. **图片管理**
-   - 添加/删除图片链接
-   - 批量导入图片
-   - PC/移动端分类管理
+## 安全机制
 
-2. **操作日志**
-   - 查看管理员操作记录
-   - 包含操作时间、用户、IP地址
-
-3. **用户设置**
-   - 修改管理员用户名
-   - 修改登录密码
-
-4. **一键更新**
-   - 检查 GitHub 最新版本
-   - 一键更新到最新版本
-   - 备份管理与一键回滚
-   - 更新历史日志查看
-   - GitHub Token 配置（提升 API 速率限制，私有仓库必需）
-
-## 安全建议
-
-1. **修改默认密码**：首次使用务必修改默认账号密码
-2. **目录保护**：确保`data/`和`admin/logs/`目录无法通过web访问
-3. **HTTPS**：生产环境建议使用HTTPS
-4. **定期备份**：定期备份`data/`目录下的数据文件
-
-## 安全特性
-
-- 🔒 SSRF防护：禁止访问内网IP，验证DNS解析结果、验证图片MIME类型与文件签名（魔数）
-- 🔒 登录锁定：5次失败后锁定5分钟
-- 🔒 CSRF Token：所有POST操作验证
-- 🔒 频率限制：API每分钟100次，管理后台每分钟10次
-- 🔒 XSS防护：所有用户输入输出均经过转义
-- 🔒 目录保护：敏感目录禁止web访问
-- 🔒 会话管理：设置 Cookie SameSite、HttpOnly、超时自动登出
-- 🔒 代理头可信任配置：可选择是否信任 X-Forwarded-For 等代理头
+- SSRF 防护：限制协议与内网地址，校验 DNS 解析、图片 MIME 与文件魔数
+- 登录保护：5 次失败锁定 5 分钟，会话 ID 登录后重新生成
+- CSRF Token：所有写操作校验；API 与后台独立频率限制（100 次/分钟、10 次/分钟）
+- XSS 过滤：用户输入输出统一转义
+- 敏感目录（`data/`、`admin/logs/`）默认禁止 Web 访问
 
 ## 项目结构
 
+<details>
+<summary>展开查看目录结构</summary>
+
 ```
-随机图片api/
-├── api.php              # 自动识别设备API
-├── pc.php               # PC端专用API
-├── pe.php               # 移动端专用API
-├── index.php            # 项目首页
-├── config.php           # 配置入口：核心常量、会话引导与 lib 模块装配
+img-api/
+├── api.php              # 自动识别设备 API
+├── pc.php / pe.php      # PC / 移动端专用 API
+├── index.php            # 项目首页（统计图表）
+├── config.php           # 配置入口：常量定义与 lib 模块装配
 ├── nginx.conf.example   # Nginx 部署安全配置示例
-├── lib/                 # 核心函数模块（按职责拆分，由 config.php 统一 require）
-│   ├── db.php           # 数据库连接与初始化
-│   ├── auth.php         # 认证/登录锁定/CSRF
-│   ├── images.php       # 图片管理
-│   ├── network.php      # SSRF 防护、远程抓取与设备识别
-│   ├── stats.php        # 调用统计与自动落库
-│   ├── update.php       # 自动更新与目录防护
-│   └── ...              # 其余模块（cache/settings/ratelimit/api/log/version/environment）
-├── admin/
-│   ├── index.php        # 登录页面
-│   ├── dashboard.php    # 管理后台（路由与共享布局）
-│   ├── views/           # 后台各功能区块视图（按 section 拆分）
-│   ├── logout.php       # 退出登录
-│   ├── update.php       # 一键更新AJAX接口
-│   └── logs/            # 操作日志目录
-├── update/              # 更新系统目录
-│   ├── updater.php      # 核心更新类
-│   └── migrations.php   # 数据迁移脚本
-├── public/             # 静态资源目录
-└── data/                # 数据目录（SQLite、缓存、备份等）
-    ├── app.db           # SQLite 数据库
-    ├── app_version.txt  # 版本号备份文件
-    ├── cache/           # 缓存目录
-    ├── backups/         # 更新备份目录
-    └── update_cache/    # 更新临时下载目录
+├── lib/                 # 核心函数模块（db/auth/images/network/stats/update/...）
+├── admin/               # 管理后台（登录、dashboard 与 views/ 各功能视图）
+├── update/              # 自动更新系统（updater.php / migrations.php）
+├── public/              # 静态资源
+└── data/                # 运行数据（SQLite、缓存、备份、更新临时目录）
 ```
 
-> 自 v3.2.2 起，`config.php` 已收敛为配置入口，业务函数按职责拆分为 `lib/` 下的独立模块；管理后台各功能区块（图片管理、操作日志、用户设置、网站设置、环境检测、系统更新）拆分为 `admin/views/` 下的子视图。业务调用方无需感知这些拆分。
+自 v3.2.2 起 `config.php` 收敛为配置入口，业务函数按职责拆分至 `lib/`，后台各功能区块拆分至 `admin/views/`。
+</details>
 
 ## 技术栈
 
-- 后端：PHP + SQLite
-- 前端：Bootstrap 5, jQuery, Chart.js
-- 数据存储：SQLite 数据库
-- 自动更新：GitHub Releases API
-
-## 当前版本
-
-v3.2.3.5
+PHP · SQLite · Bootstrap 5 · jQuery · Chart.js · GitHub Releases API
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE) 开源协议。
-
-允许自由使用、修改、商用与再分发，仅需保留版权声明。详见 [LICENSE](LICENSE) 文件。
+[MIT License](LICENSE) —— 可自由使用、修改、商用与再分发，仅需保留版权声明。
