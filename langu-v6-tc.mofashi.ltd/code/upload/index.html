@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#fbfaf7">
+<meta name="description" content="魔法师图床 · 极简优雅的图片上传页，支持拖拽、粘贴与直传加速">
+<title>魔法师图床 · 图片上传</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23161616'/%3E%3Cpath d='M18 46 L38 26' stroke='%23f4f1ea' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M43 16 l2.4 5.2 5.2 2.4 -5.2 2.4 -2.4 5.2 -2.4 -5.2 -5.2 -2.4 5.2 -2.4 z' fill='%23f4f1ea'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400;9..144,550&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#fbfaf7;
+  --card:#ffffff;
+  --ink:#161616;
+  --ink-2:#585854;
+  --ink-3:#9a9993;
+  --line:rgba(22,22,22,.09);
+  --line-2:rgba(22,22,22,.16);
+  --accent:#1f6f5d;
+  --accent-soft:rgba(31,111,93,.10);
+  --accent-line:rgba(31,111,93,.35);
+  --red:#c8443a;
+  --red-soft:rgba(200,68,58,.08);
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+  --sans:"Instrument Sans","Helvetica Neue",Arial,sans-serif;
+  --serif:"Fraunces",Georgia,"Songti SC","Songti SC","SimSun",serif;
+  --shadow:0 1px 2px rgba(22,22,22,.04),0 18px 40px -24px rgba(22,22,22,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%}
+body{
+  font-family:var(--sans);
+  background:var(--paper);color:var(--ink);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  overflow-x:hidden;line-height:1.6;
+}
+::selection{background:var(--accent-soft);color:var(--ink)}
+.wrap{position:relative;max-width:720px;margin:0 auto;padding:44px 22px 72px}
+.hero{animation:fade .7s .06s ease both}
+.brand-row{display:flex;align-items:center;gap:14px}
+.mark{width:40px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:11px;color:var(--ink);background:var(--card)}
+.mark svg{width:22px;height:22px}
+.hero h1{font-family:var(--serif);font-weight:550;font-size:24px;letter-spacing:-.01em;line-height:1.1}
+.mode-pill{padding:0;border:none;background:transparent;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--ink-3);display:inline-flex;align-items:center;gap:7px;margin-left:auto;white-space:nowrap}
+.mode-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--ink-3);flex:none}
+.mode-pill.direct{color:var(--accent)}
+.mode-pill.direct .dot{background:var(--accent)}
+.hero .sub{margin-top:6px;font-size:12.5px;color:var(--ink-3)}
+.rule{height:1px;background:var(--line);margin:26px 0;border:none}
+
+.dropzone{position:relative;text-align:center;padding:58px 26px 52px;border-radius:18px;border:1px dashed var(--line-2);background:var(--card);box-shadow:var(--shadow);cursor:pointer;transition:border-color .3s,box-shadow .3s,transform .3s;animation:fade .7s .12s ease both;outline:none}
+.dropzone:hover,.dropzone:focus-visible{border-color:var(--accent-line);transform:translateY(-1px)}
+.dropzone:focus-visible{box-shadow:0 0 0 3px rgba(31,111,93,.16)}
+.dropzone.dragging{border-style:solid;border-color:var(--accent);background:var(--accent-soft);transform:scale(1.006)}
+.dz-icon{width:46px;height:46px;margin:0 auto 20px;border:1.5px solid var(--line);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--ink-2);transition:transform .35s ease,color .3s,border-color .3s}
+.dz-icon svg{width:18px;height:18px}
+.dz-icon .d2{opacity:.45}
+.dropzone.dragging .dz-icon{transform:scale(1.08);color:var(--accent);border-color:var(--accent)}
+.dz-title{font-size:17px;font-weight:500;letter-spacing:.01em}
+.dz-sub{margin-top:5px;font-size:13px;color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;gap:9px;margin-top:24px;padding:11px 30px;border-radius:99px;border:1px solid var(--ink);cursor:pointer;font-family:inherit;font-size:14px;font-weight:500;letter-spacing:.02em;color:var(--ink);background:transparent;transition:color .25s,background .25s,transform .15s}
+.btn:hover{color:var(--card);background:var(--ink);transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.dz-hint{margin-top:22px;font-size:12.5px;color:var(--ink-3)}
+.dz-hint kbd{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:5px;border:1px solid var(--line);border-bottom-width:1.5px;background:var(--card);color:var(--ink-2)}
+.queue{margin-top:26px}
+.toolbar{margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;animation:fade .5s .18s ease both}
+.comp{display:inline-flex;align-items:center;gap:11px;padding:9px 14px;border-radius:11px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-family:var(--sans);transition:border-color .25s}
+.comp:hover{border-color:var(--accent-line)}
+.comp-label{font-size:13px;font-weight:500;color:var(--ink)}
+.comp-tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--ink-3)}
+.comp .switch{position:relative;width:34px;height:20px;flex:none;border-radius:99px;background:var(--line);transition:background .28s,box-shadow .28s;box-shadow:inset 0 0 0 1px var(--line)}
+.comp .switch i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .28s cubic-bezier(.22,.8,.3,1);box-shadow:0 1px 3px rgba(22,22,22,.25)}
+.comp[aria-pressed="true"] .switch{background:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.comp[aria-pressed="true"] .switch i{left:16px}
+.comp[aria-pressed="true"] .comp-tag{color:var(--accent)}
+.start{display:inline-flex;align-items:center;gap:8px;padding:11px 24px;border-radius:99px;border:none;cursor:pointer;font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:.02em;color:var(--card);background:var(--ink);transition:background .25s,transform .15s,opacity .3s}
+.start:hover{background:#000;transform:translateY(-1px)}
+.start:active{transform:translateY(0)}
+.start .cnt{min-width:16px;text-align:center;padding:1px 6px;border-radius:99px;background:rgba(255,255,255,.2);font-family:var(--mono);font-size:11px}
+.start.busy{opacity:.55;pointer-events:none}
+.comp-opts{display:flex;align-items:center;gap:22px;padding:9px 16px;border-radius:11px;border:1px solid var(--line);background:var(--card)}
+.comp-opts[hidden]{display:none}
+.co-group{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--ink-3);font-family:var(--mono);letter-spacing:.05em}
+.co-group b{color:var(--ink);font-weight:500}
+.co-group select{appearance:none;-webkit-appearance:none;background:#fff;border:1px solid var(--line);border-radius:7px;color:var(--ink);font-family:var(--sans);font-size:13px;font-weight:500;padding:6px 26px 6px 8px;cursor:pointer;outline:none;transition:border-color .25s}
+.co-group select:hover,.co-group select:focus{border-color:var(--accent-line)}
+.co-group select option{background:#fff;color:var(--ink)}
+.co-group select{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9993' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.co-group input[type=range]{-webkit-appearance:none;appearance:none;width:120px;height:3px;border-radius:99px;background:var(--line);outline:none;cursor:pointer}
+.co-group input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--card);box-shadow:0 1px 3px rgba(22,22,22,.28),0 0 0 1px var(--accent)}
+.co-group input[type=range]::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--card);box-shadow:0 1px 3px rgba(22,22,22,.28),0 0 0 1px var(--accent)}
+
+.item{display:flex;gap:15px;padding:15px;border-radius:14px;background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);margin-top:13px;animation:fade .45s .04s ease both}
+.item.done{border-color:var(--accent-line)}
+.item.error{border-color:rgba(200,68,58,.4)}
+.thumb{width:60px;height:60px;flex:none;border-radius:9px;object-fit:cover;border:1px solid var(--line);background:#f1f0ec}
+.info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:8px}
+.row1{display:flex;align-items:center;gap:11px}
+.name{flex:1;min-width:0;font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);letter-spacing:.02em}
+.icon-btn{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:7px;border:none;background:transparent;color:var(--ink-3);cursor:pointer;transition:color .2s,background .2s}
+.icon-btn:hover{color:var(--red);background:var(--red-soft)}
+.progress{position:relative;height:2px;border-radius:99px;background:var(--line);overflow:hidden}
+.progress i{display:block;height:100%;width:0;border-radius:99px;background:var(--accent);transition:width .25s ease}
+.status{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--ink-3);letter-spacing:.04em}
+.status .sdot{width:6px;height:6px;border-radius:50%;background:var(--ink-3);flex:none}
+.status.hashing .sdot{background:var(--accent)}
+.status.uploading .sdot{background:var(--accent);animation:blink 1.1s ease-in-out infinite}
+.status.ok .sdot{background:var(--accent)}
+.status.bad .sdot{background:var(--red)}
+@keyframes blink{50%{opacity:.35}}
+.result{display:flex;flex-direction:column;gap:9px}
+.tabs{display:inline-flex;align-self:flex-start;border-radius:8px;border:1px solid var(--line);overflow:hidden}
+.tabs button{padding:5px 13px;border:none;background:transparent;color:var(--ink-3);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;cursor:pointer;transition:color .2s,background .2s}
+.tabs button:hover{color:var(--ink-2)}
+.tabs button.on{color:var(--accent);background:var(--accent-soft)}
+.linkbox{display:flex;align-items:center;gap:8px}
+.linkbox code{flex:1;min-width:0;font-family:var(--mono);font-size:11.5px;color:var(--ink-2);background:#f5f4f0;border:1px solid var(--line);border-radius:8px;padding:8px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sq{flex:none;width:33px;height:33px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);cursor:pointer;transition:color .2s,border-color .2s,background .2s,transform .15s;text-decoration:none}
+.sq:hover{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.sq:active{transform:scale(.94)}
+.sq.copied{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
+.sq svg{width:15px;height:15px}
+.err{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--red)}
+.retry{margin-left:auto;padding:5px 15px;border-radius:99px;border:1px solid rgba(200,68,58,.4);background:var(--red-soft);color:var(--red);font-size:12px;cursor:pointer;font-family:inherit;transition:background .2s,transform .15s}
+.retry:hover{background:rgba(200,68,58,.14);transform:translateY(-1px)}
+.footer{margin-top:52px;text-align:center;font-size:11.5px;font-family:var(--mono);letter-spacing:.1em;color:var(--ink-3);animation:fade .7s .26s ease both}
+.footer .sep{margin:0 10px;opacity:.5}
+.toasts{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;align-items:center;gap:10px;pointer-events:none;width:max-content;max-width:92vw}
+.toast{display:flex;align-items:center;gap:10px;padding:11px 18px;border-radius:10px;font-size:13px;background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow);animation:toastIn .35s cubic-bezier(.22,.8,.3,1) both;max-width:92vw}
+.toast.error{border-color:rgba(200,68,58,.4)}
+.toast.leaving{animation:toastOut .3s ease both}
+.toast svg{width:15px;height:15px;flex:none}
+@keyframes toastIn{from{opacity:0;transform:translateY(-12px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-8px) scale(.98)}}
+@keyframes fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (max-width:560px){
+  .wrap{padding:30px 16px 56px}
+  .dropzone{padding:46px 18px 44px}
+  .dz-sub{max-width:220px;margin-left:auto;margin-right:auto}
+  .thumb{width:52px;height:52px}
+  .linkbox code{font-size:10.5px;padding:7px 10px}
+  .toolbar{flex-wrap:wrap}
+  .start{width:100%;justify-content:center}
+  .comp-opts{flex:1}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="hero">
+    <div class="brand-row">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M11 35 L30 16" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <path d="M34 12 l2 4.4 4.4 2 -4.4 2 -2 4.4 -2 -4.4 -4.4 -2 4.4 -2 z" fill="currentColor"/>
+        </svg>
+      </div>
+      <h1>魔法师图床</h1>
+      <div class="mode-pill" id="modePill" hidden><span class="dot"></span><span id="modeText">检测通道中…</span></div>
+    </div>
+    <p class="sub">极简的图片托管 · 拖拽 / 粘贴 / 直传加速</p>
+  </header>
+  <hr class="rule">
+
+  <section class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="上传图片：点击选择、拖拽或粘贴">
+    <div class="dz-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <p class="dz-title">放下图片，或点击选择</p>
+    <p class="dz-sub">可一次选择多张 · 上传前自动压缩</p>
+    <button class="btn" id="pickBtn" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      选择图片
+    </button>
+    <p class="dz-hint">支持 <span id="extHint"></span> · 单张 ≤ <span id="sizeHint"></span> · 也可 <kbd>Ctrl</kbd> + <kbd>V</kbd> 粘贴截图</p>
+    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+  </section>
+
+  <section class="toolbar" id="toolbar">
+    <button class="comp" id="compToggle" type="button" aria-pressed="true">
+      <span class="comp-label">压缩图片</span>
+      <span class="comp-tag" id="compTag">WebP · 质量65</span>
+      <span class="switch"><i></i></span>
+    </button>
+    <div class="comp-opts" id="compOpts" hidden>
+      <label class="co-group">
+        <span>格式</span>
+        <select id="fmtSel">
+          <option value="webp" selected>WebP</option>
+          <option value="jpeg">JPEG</option>
+        </select>
+      </label>
+      <label class="co-group">
+        <span>质量 <b id="qualVal">65</b></span>
+        <input type="range" id="qualRange" min="10" max="100" step="1" value="65">
+      </label>
+    </div>
+    <button class="start" id="startBtn" type="button" hidden>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/><path d="M4.5 19.5h15"/></svg>
+      开始上传<span class="cnt" id="startCnt"></span>
+    </button>
+  </section>
+
+  <section class="queue" id="queue" aria-live="polite"></section>
+
+  <footer class="footer">
+    游客上传模式<span class="sep">·</span>图片由魔法师图床提供存储
+  </footer>
+</main>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+'use strict';
+const API_BASE = 'https://tc.mofashi.ltd/api/v1';
+const MAX_SIZE_MB = 10;
+const ACCEPT_EXTS = ['jpg','jpeg','png','gif','webp','bmp'];
+const CONCURRENCY = 3;
+
+const MIME_EXT = {'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/webp':'webp','image/bmp':'bmp'};
+
+const $ = id => document.getElementById(id);
+const queueEl = $('queue'), dropzone = $('dropzone'), fileInput = $('fileInput'), toasts = $('toasts');
+const startBtn = $('startBtn'), startCnt = $('startCnt'), compToggle = $('compToggle');
+const compTag = $('compTag'), compOpts = $('compOpts'), fmtSel = $('fmtSel'), qualRange = $('qualRange'), qualVal = $('qualVal');
+
+// 压缩设置：默认开启、格式 webp、质量 65，全部记忆用户偏好
+let compressEnabled = localStorage.getItem('mofashi_compress') !== 'off';
+let compressFmt = localStorage.getItem('mofashi_fmt') || 'webp';
+let compressQ = parseInt(localStorage.getItem('mofashi_q'), 10) || 65;
+if (compressFmt !== 'webp' && compressFmt !== 'jpeg') compressFmt = 'webp';
+if (!(compressQ >= 10 && compressQ <= 100)) compressQ = 65;
+fmtSel.value = compressFmt;
+qualRange.value = compressQ;
+qualVal.textContent = compressQ;
+function applyCompressUI(){
+  compToggle.setAttribute('aria-pressed', String(compressEnabled));
+  compOpts.hidden = !compressEnabled;
+  if (compressEnabled){
+    const name = compressFmt === 'jpeg' ? 'JPEG' : 'WebP';
+    compTag.textContent = name + ' · 质量' + compressQ;
+  } else {
+    compTag.textContent = '关闭';
+  }
+  fmtSel.value = compressFmt;
+  qualRange.value = compressQ;
+  qualVal.textContent = compressQ;
+}
+applyCompressUI();
+
+// 调整设置后，把还没开始上传的图按新设置重新压缩，实时刷新卡片对比
+function recompressPending(){
+  queue.forEach(item => { if (!item.started) applyCompression(item, true); });
+}
+compToggle.addEventListener('click', () => {
+  compressEnabled = !compressEnabled;
+  localStorage.setItem('mofashi_compress', compressEnabled ? 'on' : 'off');
+  applyCompressUI();
+  recompressPending();
+});
+fmtSel.addEventListener('change', () => {
+  compressFmt = fmtSel.value;
+  localStorage.setItem('mofashi_fmt', compressFmt);
+  applyCompressUI();
+  recompressPending();
+});
+qualRange.addEventListener('input', () => {
+  qualVal.textContent = qualRange.value;
+});
+qualRange.addEventListener('change', () => {
+  compressQ = parseInt(qualRange.value, 10);
+  localStorage.setItem('mofashi_q', String(compressQ));
+  applyCompressUI();
+  recompressPending();
+});
+// canvas 是否支持输出 webp / jpeg
+const WEBP_SUPPORTED = (() => { try { return document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0; } catch (e) { return false; } })();
+const JPEG_SUPPORTED = (() => { try { return document.createElement('canvas').toDataURL('image/jpeg').indexOf('data:image/jpeg') === 0; } catch (e) { return false; } })();
+
+document.getElementById('extHint').textContent = ACCEPT_EXTS.join(' / ');
+document.getElementById('sizeHint').textContent = MAX_SIZE_MB + ' MB';
+
+function fmtSize(bytes){
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(2) + ' MB';
+}
+
+function md5cycle(st, k){
+  let a = st[0], b = st[1], c = st[2], d = st[3];
+  const add = (x, y) => (x + y) | 0;
+  const cmn = (q, a, b, x, s, t) => { a = add(add(a, q), add(x, t)); return add((a << s) | (a >>> (32 - s)), b); };
+  const ff = (a, b, c, d, x, s, t) => cmn((b & c) | (~b & d), a, b, x, s, t);
+  const gg = (a, b, c, d, x, s, t) => cmn((b & d) | (c & ~d), a, b, x, s, t);
+  const hh = (a, b, c, d, x, s, t) => cmn(b ^ c ^ d, a, b, x, s, t);
+  const ii = (a, b, c, d, x, s, t) => cmn(c ^ (b | ~d), a, b, x, s, t);
+
+  a = ff(a,b,c,d,k[0],7,-680876936);   d = ff(d,a,b,c,k[1],12,-389564586);  c = ff(c,d,a,b,k[2],17,606105819);   b = ff(b,c,d,a,k[3],22,-1044525330);
+  a = ff(a,b,c,d,k[4],7,-176418897);   d = ff(d,a,b,c,k[5],12,1200080426);  c = ff(c,d,a,b,k[6],17,-1473231341); b = ff(b,c,d,a,k[7],22,-45705983);
+  a = ff(a,b,c,d,k[8],7,1770035416);   d = ff(d,a,b,c,k[9],12,-1958414417); c = ff(c,d,a,b,k[10],17,-42063);     b = ff(b,c,d,a,k[11],22,-1990404162);
+  a = ff(a,b,c,d,k[12],7,1804603682);  d = ff(d,a,b,c,k[13],12,-40341101);  c = ff(c,d,a,b,k[14],17,-1502002290);b = ff(b,c,d,a,k[15],22,1236535329);
+
+  a = gg(a,b,c,d,k[1],5,-165796510);   d = gg(d,a,b,c,k[6],9,-1069501632);  c = gg(c,d,a,b,k[11],14,643717713);  b = gg(b,c,d,a,k[0],20,-373897302);
+  a = gg(a,b,c,d,k[5],5,-701558691);   d = gg(d,a,b,c,k[10],9,38016083);    c = gg(c,d,a,b,k[15],14,-660478335); b = gg(b,c,d,a,k[4],20,-405537848);
+  a = gg(a,b,c,d,k[9],5,568446438);    d = gg(d,a,b,c,k[14],9,-1019803690); c = gg(c,d,a,b,k[3],14,-187363961);  b = gg(b,c,d,a,k[8],20,1163531501);
+  a = gg(a,b,c,d,k[13],5,-1444681467); d = gg(d,a,b,c,k[2],9,-51403784);    c = gg(c,d,a,b,k[7],14,1735328473);  b = gg(b,c,d,a,k[12],20,-1926607734);
+
+  a = hh(a,b,c,d,k[5],4,-378558);      d = hh(d,a,b,c,k[8],11,-2022574463); c = hh(c,d,a,b,k[11],16,1839030562); b = hh(b,c,d,a,k[14],23,-35309556);
+  a = hh(a,b,c,d,k[1],4,-1530992060);  d = hh(d,a,b,c,k[4],11,1272893353);  c = hh(c,d,a,b,k[7],16,-155497632);  b = hh(b,c,d,a,k[10],23,-1094730640);
+  a = hh(a,b,c,d,k[13],4,681279174);   d = hh(d,a,b,c,k[0],11,-358537222);  c = hh(c,d,a,b,k[3],16,-722521979);  b = hh(b,c,d,a,k[6],23,76029189);
+  a = hh(a,b,c,d,k[9],4,-640364487);   d = hh(d,a,b,c,k[12],11,-421815835); c = hh(c,d,a,b,k[15],16,530742520);  b = hh(b,c,d,a,k[2],23,-995338651);
+
+  a = ii(a,b,c,d,k[0],6,-198630844);   d = ii(d,a,b,c,k[7],10,1126891415);  c = ii(c,d,a,b,k[14],15,-1416354905);b = ii(b,c,d,a,k[5],21,-57434055);
+  a = ii(a,b,c,d,k[12],6,1700485571);  d = ii(d,a,b,c,k[3],10,-1894986606); c = ii(c,d,a,b,k[10],15,-1051523);   b = ii(b,c,d,a,k[1],21,-2054922799);
+  a = ii(a,b,c,d,k[8],6,1873313359);   d = ii(d,a,b,c,k[15],10,-30611744);  c = ii(c,d,a,b,k[6],15,-1560198380); b = ii(b,c,d,a,k[13],21,1309151649);
+  a = ii(a,b,c,d,k[4],6,-145523070);   d = ii(d,a,b,c,k[11],10,-1120210379);c = ii(c,d,a,b,k[2],15,718787259);   b = ii(b,c,d,a,k[9],21,-343485551);
+
+  st[0] = add(a, st[0]); st[1] = add(b, st[1]); st[2] = add(c, st[2]); st[3] = add(d, st[3]);
+}
+function wordsLE(buf, off, k){
+  for (let j = 0; j < 16; j++)
+    k[j] = buf[off++] | (buf[off++] << 8) | (buf[off++] << 16) | (buf[off++] << 24);
+}
+function rhex(n){
+  const h = '0123456789abcdef'; let s = '';
+  for (let j = 0; j < 4; j++){
+    const b = (n >> (j * 8)) & 255;
+    s += h[b >> 4] + h[b & 15];
+  }
+  return s;
+}
+function md5(bytes){
+  const st = [1732584193, -271733879, -1732584194, 271733878];
+  const k = new Array(16);
+  const n = bytes.length;
+  let i = 0;
+  while (i + 64 <= n){
+    wordsLE(bytes, i, k);
+    md5cycle(st, k);
+    i += 64;
+  }
+  const m = n - i;
+  const buf = new Uint8Array(64);
+  buf.set(bytes.subarray(i));
+  buf[m] = 0x80;
+  const lo = (n * 8) >>> 0;
+  const hi = Math.floor(n * 8 / 4294967296);
+  const writeLen = b => {
+    b[56] = lo & 255; b[57] = (lo >>> 8) & 255; b[58] = (lo >>> 16) & 255; b[59] = (lo >>> 24) & 255;
+    b[60] = hi & 255; b[61] = (hi >>> 8) & 255; b[62] = (hi >>> 16) & 255; b[63] = (hi >>> 24) & 255;
+  };
+  if (m < 56){
+    writeLen(buf);
+    wordsLE(buf, 0, k);
+    md5cycle(st, k);
+  } else {
+    wordsLE(buf, 0, k);
+    md5cycle(st, k);
+    const b2 = new Uint8Array(64);
+    writeLen(b2);
+    wordsLE(b2, 0, k);
+    md5cycle(st, k);
+  }
+  return rhex(st[0]) + rhex(st[1]) + rhex(st[2]) + rhex(st[3]);
+}
+
+function sha1(bytes){
+  const n = bytes.length;
+  const total = (((n + 8) >> 6) + 1) << 6;
+  const buf = new Uint8Array(total);
+  buf.set(bytes);
+  buf[n] = 0x80;
+  const bitLen = n * 8;
+  const dv = new DataView(buf.buffer);
+  dv.setUint32(total - 8, Math.floor(bitLen / 4294967296));
+  dv.setUint32(total - 4, bitLen >>> 0);
+  let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
+  const w = new Int32Array(80);
+  for (let i = 0; i < total; i += 64){
+    for (let j = 0; j < 16; j++) w[j] = dv.getInt32(i + j * 4);
+    for (let j = 16; j < 80; j++){
+      const x = w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16];
+      w[j] = (x << 1) | (x >>> 31);
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let j = 0; j < 80; j++){
+      let f, kk;
+      if (j < 20){ f = (b & c) | (~b & d); kk = 0x5A827999; }
+      else if (j < 40){ f = b ^ c ^ d; kk = 0x6ED9EBA1; }
+      else if (j < 60){ f = (b & c) | (b & d) | (c & d); kk = 0x8F1BBCDC; }
+      else { f = b ^ c ^ d; kk = 0xCA62C1D6; }
+      const t = ((((a << 5) | (a >>> 27)) + (f | 0) + (e | 0) + (kk | 0) + (w[j] | 0)) | 0);
+      e = d; d = c; c = (b << 30) | (b >>> 2); b = a; a = t;
+    }
+    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;
+  }
+  return [h0,h1,h2,h3,h4].map(x => (x >>> 0).toString(16).padStart(8,'0')).join('');
+}
+
+function getDimensions(file){
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const done = (v) => { URL.revokeObjectURL(url); resolve(v); };
+    img.onload = () => done([img.naturalWidth, img.naturalHeight]);
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}
+
+// 是否需要压缩：开启压缩且图片本身不支持压缩格式列表，gif 动图与 ico 跳过（与图床一致）
+function shouldCompress(ext, enabled, fmt){
+  if (!enabled || !ext || ext === 'gif' || ext === 'ico') return false;
+  if (fmt === 'webp') return WEBP_SUPPORTED && ext !== 'webp';
+  if (fmt === 'jpeg') return JPEG_SUPPORTED && ext !== 'jpeg' && ext !== 'jpg';
+  return false;
+}
+
+// 压缩图片：canvas 重新编码为目标格式（默认 WebP，可 JPEG），与原图等比不放大
+function compressImage(file, fmt, q){
+  const mime = fmt === 'jpeg' ? 'image/jpeg' : 'image/webp';
+  const fExt = fmt === 'jpeg' ? 'jpg' : 'webp';
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const done = () => URL.revokeObjectURL(url);
+    img.onload = () => {
+      try{
+        const w = img.naturalWidth, h = img.naturalHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        // jpeg 无透明通道，白底填充，避免黑色背景
+        if (fmt === 'jpeg'){
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => {
+          done();
+          if (!blob){ resolve(null); return; }
+          const base = (file.name || 'image').replace(/\.[^.]+$/i, '');
+          const nf = new File([blob], base + '.' + fExt, { type: mime });
+          resolve(nf);
+        }, mime, q);
+      } catch (e){
+        done();
+        reject(new UploadError('压缩失败：' + e.message));
+      }
+    };
+    img.onerror = () => { done(); reject(new UploadError('无法读取图片，已跳过压缩')); };
+    img.src = url;
+  });
+}
+
+// 对单个待上传项应用压缩；force=true 时忽略已压缩结果强制重压（切换设置后刷新对比）
+function restoreOriginal(item){
+  if (item.file !== item.origFile){
+    item.file = item.origFile;
+    item.ext = item.origExt;
+    item.name = item.origName;
+    item.els.name.textContent = item.name;
+    if (item._compThumbUrl) URL.revokeObjectURL(item._compThumbUrl);
+    item._compThumbUrl = null;
+    item.els.thumb.src = item.thumbUrl;
+  }
+  item.compressApplied = false;
+  item.compSize = null;
+}
+
+function applyCompression(item, force){
+  if (item.started) return Promise.resolve(item);                 // 已在上传中，不再变动
+  if (!force && item.compressApplied) return Promise.resolve(item); // 已按要求压缩过
+  const fmt = compressFmt, q = compressQ;
+  if (!compressEnabled || !shouldCompress(item.ext, compressEnabled, fmt)){
+    restoreOriginal(item);
+    updateMeta(item);
+    return Promise.resolve(item);
+  }
+  // 静默压缩：不改变卡片状态（始终显示 待上传），完成后仅更新大小对比
+  return compressImage(item.origFile, fmt, q)   // 始终从原图压缩，避免二次有损
+    .then(comp => {
+      if (item.removed || item.started) return item;
+      if (!comp){ restoreOriginal(item); updateMeta(item); return item; }
+      item.file = comp;
+      item.ext = fmt === 'jpeg' ? 'jpg' : 'webp';
+      item.name = comp.name;
+      item.els.name.textContent = comp.name;
+      item.compSize = comp.size;
+      item.compressApplied = true;
+      if (item._compThumbUrl) URL.revokeObjectURL(item._compThumbUrl);
+      item._compThumbUrl = URL.createObjectURL(comp);
+      item.els.thumb.src = item._compThumbUrl;
+      updateMeta(item);
+      return item;
+    })
+    .catch(e => {
+      if (item.removed) return item;
+      restoreOriginal(item);
+      updateMeta(item);
+      toast((e && e.message) || '压缩失败，将按原图上传', 'error');
+      return item;
+    });
+}
+
+class UploadError extends Error{
+  constructor(message, fatal){ super(message); this.fatal = !!fatal; }
+}
+
+function httpMessage(status){
+  if (status === 401) return '游客上传已被关闭，请登录后使用';
+  if (status === 403) return '接口功能已被管理员关闭';
+  if (status === 413) return '图片超出服务器允许的大小';
+  if (status === 429) return '上传太频繁，请稍后再试';
+  if (status >= 500) return '服务异常，请稍后再试';
+  return '请求失败（HTTP ' + status + '）';
+}
+
+function xhrSend(opts){
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(opts.method, opts.url);
+    xhr.responseType = opts.json ? 'json' : 'text';
+    if (opts.accept) xhr.setRequestHeader('Accept', opts.accept);
+    if (opts.token) xhr.setRequestHeader('Authorization', 'Bearer ' + opts.token);
+    if (opts.json && typeof opts.data === 'string') xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable && opts.onProgress) opts.onProgress(e.loaded / e.total);
+    });
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300){
+        if (opts.json) resolve(xhr.response);
+        else resolve(xhr.responseText);
+      } else {
+        let msg = httpMessage(xhr.status);
+        if (opts.json && xhr.response && xhr.response.message) msg = xhr.response.message;
+        if (opts.expectAny2xx && xhr.status >= 400 && xhr.status < 500) msg = '存储节点拒绝写入（HTTP ' + xhr.status + '）';
+        const err = new UploadError(msg);
+        err.status = xhr.status;
+        err.network = false;
+        reject(err);
+      }
+    });
+    xhr.addEventListener('error', () => reject(Object.assign(new UploadError('网络错误或存储节点不可达', true), { network: true })));
+    xhr.addEventListener('abort', () => reject(Object.assign(new UploadError('已取消'), { aborted: true })));
+    xhr.send(opts.data);
+  });
+}
+
+async function api(path, { method = 'GET', body = null } = {}){
+  const res = await xhrSend({
+    method, url: API_BASE + path,
+    data: body ? JSON.stringify(body) : null,
+    json: true, accept: 'application/json',
+    headers: body ? { 'Content-Type': 'application/json' } : {}
+  });
+  if (!res || res.status !== true) throw new UploadError((res && res.message) || '服务异常，请稍后再试');
+  return res.data;
+}
+
+let modePromise = null;
+function detectMode(){
+  if (!modePromise){
+    modePromise = api('/strategies')
+      .then(data => {
+        const list = (data && data.strategies) || [];
+        const custom = list.find(s => s.key === 'custom');
+        const mode = custom ? { mode: 'direct', strategyId: custom.id, name: custom.name } : { mode: 'relay' };
+        updateModePill(mode);
+        return mode;
+      })
+      .catch(() => {
+        const mode = { mode: 'relay' };
+        updateModePill(mode);
+        return mode;
+      });
+  }
+  return modePromise;
+}
+
+function extOf(file){
+  const m = (file.name || '').match(/\.([a-z0-9]+)$/i);
+  if (m) return m[1].toLowerCase();
+  return MIME_EXT[file.type] || null;
+}
+
+async function pipeline(item){
+  const mode = await detectMode();
+  if (item.removed) return;
+  item.mode = mode.mode;
+  item.started = true;                 // 已开始，后续设置调整不再改动
+  updateMeta(item);
+
+  setStage(item, 'hashing', '校验文件…');
+  const bytes = new Uint8Array(await item.file.arrayBuffer());
+  const md5Hex = md5(bytes);
+  const sha1Hex = sha1(bytes);
+  const dim = await getDimensions(item.file);
+  if (item.removed) return;
+
+  const filename = item.file.name || ('image.' + item.ext);
+
+  const doRelay = async () => {
+    const fd = new FormData();
+    fd.append('file', item.file, filename);
+    const res = await xhrSend({
+      method: 'POST', url: API_BASE + '/upload', data: fd,
+      json: true, accept: 'application/json',
+      onProgress: p => setProgress(item, p)
+    });
+    if (!res || res.status !== true) throw new UploadError((res && res.message) || '上传失败');
+    return res.data;
+  };
+
+  const doDirect = async () => {
+    setStage(item, 'preparing', '申请直传通道…');
+    const pre = await api('/upload/presign', {
+      method: 'POST',
+      body: {
+        strategy_id: mode.strategyId,
+        extension: item.ext,
+        size: item.file.size,
+        md5: md5Hex,
+        sha1: sha1Hex,
+        filename
+      }
+    });
+    if (!pre.existing){
+      setStage(item, 'uploading');
+      await xhrSend({
+        method: 'PUT', url: pre.upload_url, data: item.file,
+        expectAny2xx: true,
+        onProgress: p => setProgress(item, p)
+      });
+    }
+    setStage(item, 'finishing', pre.existing ? '秒传命中，确认中…' : '确认落库…');
+    setProgress(item, pre.existing ? 1 : null);
+    const conf = await api('/upload/confirm', {
+      method: 'POST',
+      body: {
+        strategy_id: mode.strategyId,
+        pathname: pre.pathname,
+        extension: item.ext,
+        size: item.file.size,
+        md5: md5Hex,
+        sha1: sha1Hex,
+        filename,
+        mimetype: item.file.type || ('image/' + item.ext),
+        dimensions: dim || [400, 400]
+      }
+    });
+    conf._instant = !!pre.existing;
+    return conf;
+  };
+
+  if (mode.mode === 'direct'){
+    try{
+      const data = await doDirect();
+      setProgress(item, 1);
+      finish(item, data);
+    } catch (err){
+      if (err.aborted || item.removed) throw err;
+      if (err.fatal || err.status === 403 || err.status === 401) throw err;
+      toast('直传失败，已自动切换为中转上传', 'error');
+      const data = await doRelay();
+      setProgress(item, 1);
+      finish(item, data);
+    }
+  } else {
+    const data = await doRelay();
+    setProgress(item, 1);
+    finish(item, data);
+  }
+}
+
+const queue = [];
+let active = 0;
+let queued = 0;
+
+function updateToolbar(){
+  const total = queued + active;
+  startBtn.hidden = total === 0;
+  startCnt.textContent = total > 0 ? total : '';
+  startBtn.classList.toggle('busy', active > 0);
+}
+
+function pump(){
+  while (active < CONCURRENCY && queue.length > 0){
+    const item = queue.shift();
+    queued--;
+    active++;
+    runItem(item).finally(() => { active--; updateToolbar(); pump(); });
+  }
+  updateToolbar();
+}
+
+async function runItem(item){
+  try{
+    await pipeline(item);
+  } catch (err){
+    if (err && err.aborted) return;
+    fail(item, (err && err.message) || '上传失败');
+  }
+}
+
+const startUpload = () => { if (queue.length) pump(); };
+
+let uid = 0;
+const FORMAT_KEYS = ['url', 'markdown', 'html', 'bbcode'];
+const FORMAT_LABELS = { url: 'URL', markdown: 'MD', html: 'HTML', bbcode: 'BBCODE' };
+let preferredFormat = localStorage.getItem('mofashi_format');
+if (!FORMAT_KEYS.includes(preferredFormat)) preferredFormat = 'url';
+
+const ICONS = {
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+  open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4L11 13"/><path d="M19 14v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+};
+
+function buildItem(item){
+  const el = document.createElement('article');
+  el.className = 'item';
+  el.innerHTML = `
+    <img class="thumb" alt="">
+    <div class="info">
+      <div class="row1">
+        <span class="name"></span>
+        <span class="meta"></span>
+        <button class="icon-btn" type="button" aria-label="移除">${ICONS.close}</button>
+      </div>
+      <div class="progress"><i></i></div>
+      <div class="status"><span class="sdot"></span><span class="stext">待上传</span></div>
+      <div class="result" hidden>
+        <div class="tabs"></div>
+        <div class="linkbox">
+          <code></code>
+          <button class="sq copy" type="button" aria-label="复制链接">${ICONS.copy}</button>
+          <a class="sq open" target="_blank" rel="noopener" aria-label="在新标签页打开">${ICONS.open}</a>
+        </div>
+      </div>
+      <div class="err" hidden><span class="errmsg"></span><button class="retry" type="button">重试</button></div>
+    </div>`;
+  item.el = el;
+  item.els = {
+    thumb: el.querySelector('.thumb'),
+    name: el.querySelector('.name'),
+    meta: el.querySelector('.meta'),
+    remove: el.querySelector('.icon-btn'),
+    bar: el.querySelector('.progress i'),
+    progress: el.querySelector('.progress'),
+    status: el.querySelector('.status'),
+    stext: el.querySelector('.stext'),
+    result: el.querySelector('.result'),
+    tabs: el.querySelector('.tabs'),
+    code: el.querySelector('.linkbox code'),
+    copy: el.querySelector('.sq.copy'),
+    open: el.querySelector('.sq.open'),
+    err: el.querySelector('.err'),
+    errmsg: el.querySelector('.errmsg'),
+    retry: el.querySelector('.retry')
+  };
+  item.els.thumb.src = item.thumbUrl;
+  item.els.name.textContent = item.name;
+  item.els.remove.addEventListener('click', () => removeItem(item));
+  item.els.retry.addEventListener('click', () => {
+    item.els.err.hidden = true;
+    item.els.result.hidden = true;
+    item.el.classList.remove('error');
+    setStage(item, 'pending', '待上传');
+    setProgress(item, 0);
+    queue.push(item);
+    queued++;
+    pump();
+  });
+  item.els.copy.addEventListener('click', () => copyLink(item));
+  FORMAT_KEYS.forEach(key => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = FORMAT_LABELS[key];
+    b.dataset.key = key;
+    b.addEventListener('click', () => {
+      item.currentFormat = key;
+      preferredFormat = key;
+      localStorage.setItem('mofashi_format', key);
+      refreshLink(item);
+    });
+    item.els.tabs.appendChild(b);
+  });
+  queueEl.appendChild(el);
+}
+
+function updateMeta(item){
+  const modeText = item.mode === 'direct' ? ' · 直传' : (item.mode === 'relay' ? ' · 中转' : '');
+  const comp = item.compressApplied && item.compSize != null ? item.compSize : null;
+  let sizeText;
+  if (comp != null && comp !== item.origSize){
+    const saved = comp < item.origSize ? ' ↓' + Math.round((1 - comp / item.origSize) * 100) + '%' : '';
+    sizeText = fmtSize(item.origSize) + ' → ' + fmtSize(comp) + saved;
+  } else {
+    sizeText = fmtSize(item.origSize);
+  }
+  item.els.meta.textContent = sizeText + modeText;
+}
+function setStage(item, stage, text){
+  const s = item.els.status;
+  s.className = 'status' + (stage ? ' ' + stage : '');
+  if (text !== undefined) item.els.stext.textContent = text;
+}
+function setProgress(item, p){
+  if (p !== null) item.els.bar.style.width = Math.round(p * 100) + '%';
+}
+function refreshLink(item){
+  const links = item.links || {};
+  const key = item.currentFormat;
+  item.els.code.textContent = links[key] || links.url || '';
+  item.els.tabs.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.key === key));
+}
+function finish(item, data){
+  item.links = (data && data.links) || {};
+  item.currentFormat = preferredFormat;
+  item.el.classList.remove('error');
+  item.el.classList.add('done');
+  item.els.progress.style.opacity = '0';
+  item.els.status.className = 'status ok';
+  item.els.stext.textContent = data && data._instant ? '上传成功 · 秒传去重' : '上传成功';
+  item.els.err.hidden = true;
+  item.els.result.hidden = false;
+  item.els.open.href = item.links.url || '#';
+  refreshLink(item);
+}
+function fail(item, message){
+  item.el.classList.add('error');
+  item.els.progress.style.opacity = '0';
+  item.els.status.className = 'status bad';
+  item.els.stext.textContent = '上传失败';
+  item.els.errmsg.textContent = message;
+  item.els.err.hidden = false;
+}
+function removeItem(item){
+  item.removed = true;
+  item.el.style.transition = 'opacity .3s, transform .3s';
+  item.el.style.opacity = '0';
+  item.el.style.transform = 'translateX(14px)';
+  setTimeout(() => {
+    item.el.remove();
+    URL.revokeObjectURL(item.thumbUrl);
+    if (item._compThumbUrl) URL.revokeObjectURL(item._compThumbUrl);
+    const qi = queue.indexOf(item);
+    if (qi !== -1){ queue.splice(qi, 1); queued--; }
+    updateToolbar();
+  }, 280);
+}
+async function copyLink(item){
+  const text = item.els.code.textContent;
+  if (!text) return;
+  let ok = false;
+  try{
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch (e){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch (e2) {}
+    ta.remove();
+  }
+  if (ok){
+    const btn = item.els.copy;
+    btn.classList.add('copied');
+    btn.innerHTML = ICONS.check;
+    setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = ICONS.copy; }, 1300);
+  } else {
+    toast('复制失败，请手动复制', 'error');
+  }
+}
+
+async function addFiles(fileList){
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  const rejected = [];
+  for (const file of files){
+    const ext = extOf(file);
+    if (!ext || !ACCEPT_EXTS.includes(ext)){ rejected.push((file.name || '未知文件') + '（格式不支持）'); continue; }
+    if (file.size > MAX_SIZE_MB * 1048576){ rejected.push((file.name || '图片') + '（超过 ' + MAX_SIZE_MB + ' MB）'); continue; }
+    const item = {
+      id: ++uid, file, ext,
+      origFile: file, origExt: ext,
+      origName: file.name || ('image.' + ext),
+      origSize: file.size,
+      name: file.name || ('image.' + ext),
+      thumbUrl: URL.createObjectURL(file),
+      compressApplied: false, compSize: null, started: false
+    };
+    buildItem(item);
+    await applyCompression(item);      // 立即生成压缩对比（若开启），完成后才进入待上传队列
+    if (item.removed) continue;
+    queue.push(item);
+    queued++;
+  }
+  if (rejected.length) toast('已跳过：' + rejected.join('、'), 'error');
+  updateToolbar();
+}
+
+function updateModePill(mode){
+  const pill = $('modePill'), text = $('modeText');
+  pill.hidden = false;
+  if (mode.mode === 'direct'){
+    pill.classList.add('direct');
+    text.textContent = '直传通道已启用 · ' + (mode.name || '');
+    pill.title = '图片将直接上传至存储节点，不经过服务器中转';
+  } else {
+    pill.classList.remove('direct');
+    text.textContent = '中转上传模式';
+    pill.title = '当前策略不支持直传，图片经图床服务器中转存储';
+  }
+}
+
+let toastTimer = null;
+function toast(msg, type){
+  const t = document.createElement('div');
+  t.className = 'toast' + (type === 'error' ? ' error' : '');
+  t.innerHTML = type === 'error'
+    ? '<svg viewBox="0 0 24 24" fill="none" stroke="#ff8f8f" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>'
+    : '<svg viewBox="0 0 24 24" fill="none" stroke="#e8c476" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  toasts.appendChild(t);
+  setTimeout(() => {
+    t.classList.add('leaving');
+    t.addEventListener('animationend', () => t.remove(), { once: true });
+  }, 3600);
+}
+
+dropzone.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
+$('pickBtn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+dropzone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); fileInput.click(); }
+});
+let dragDepth = 0;
+window.addEventListener('dragenter', e => {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')){
+    dragDepth++;
+    dropzone.classList.add('dragging');
+  }
+});
+window.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) dropzone.classList.remove('dragging');
+});
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  dragDepth = 0;
+  dropzone.classList.remove('dragging');
+  if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+document.addEventListener('paste', e => {
+  if (e.clipboardData && e.clipboardData.files.length){
+    e.preventDefault();
+    addFiles(e.clipboardData.files);
+  }
+});
+
+startBtn.addEventListener('click', startUpload);
+
+detectMode();
+</script>
+</body>
+</html>

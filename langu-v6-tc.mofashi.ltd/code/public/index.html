@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <!-- 标题与描述 -->
+    <title>魔法师图床 - 永久免费公益图床 | 高速图床服务</title>
+    <meta name="author" content="Akatsukiro">
+    <meta name="keywords" content="魔法师图床,魔法师,免费图床,公益图床,图片床,图床教程">
+    <meta name="description" content="魔法师图床是免费、永久免费的公益图床，基于兰空图床搭建，使用全球CDN加速、对象存储与多机镜像架构，简单好用，永久免费，赞助后无限容量。">
+
+    <!-- 主题色 / 移动端 -->
+    <meta name="theme-color" content="#2563eb">
+
+    <!-- 社交分享 (Open Graph / Twitter) -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="魔法师图床">
+    <meta property="og:title" content="魔法师图床 - 永久免费公益图床">
+    <meta property="og:description" content="简单、好用、免费的公益图床，使用兰空图床与全球CDN加速。">
+    <meta property="og:url" content="https://tc.mofashi.ltd/">
+    <meta property="og:image" content="https://free-img.mofashi.ltd/5/2026/08/22/6a89ae697d594.webp">
+    <meta property="og:locale" content="zh_CN">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="魔法师图床 - 永久免费公益图床">
+    <meta name="twitter:description" content="简单、好用、免费的公益图床。">
+    <meta name="twitter:image" content="https://free-img.mofashi.ltd/5/2026/08/22/6a89ae697d594.webp">
+
+    <!-- canonical URL -->
+    <link rel="canonical" href="https://tc.mofashi.ltd/">
+
+    <!-- favicon -->
+    <link rel="icon" type="image/png" sizes="64x64" href="static/images/favicon-64.png">
+    <link rel="shortcut icon" href="static/images/favicon-64.png">
+    <link rel="apple-touch-icon" href="static/images/apple-touch-icon.png">
+
+    <!-- 结构化数据 (SEO) -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "魔法师图床",
+        "url": "https://tc.mofashi.ltd/",
+        "description": "免费、永久的公益图床服务，使用兰空图床与全球CDN加速。",
+        "inLanguage": "zh-CN",
+        "potentialAction": {
+            "@type": "CreateAction",
+            "target": "https://tc.mofashi.ltd/index.php"
+        }
+    }
+    </script>
+
+    <!-- 首屏主图预加载：与 <img> 的 srcset/sizes 保持一致，避免重复下载 -->
+    <link rel="preload" as="image" fetchpriority="high"
+          href="static/images/hero-1100.webp"
+          imagesrcset="static/images/hero-720.webp 720w, static/images/hero-1100.webp 1100w"
+          imagesizes="(min-width: 980px) 500px, calc(100vw - 44px)">
+
+    <style>
+        /* ==========================================================================
+           魔法师图床 · 首页样式
+           设计语言：沿用项目主程序的 "Corporate Clean" 体系（见 resources/css/common.less）
+             · 浅灰底 #f7f8fa + 白卡片，1px 细描边 #e4e7ec
+             · 品牌蓝 #2563eb，圆角 8 / 10 / 12px
+             · 无渐变、无发光，靠细边框、微阴影与位移反馈体现质感
+           令牌名沿用项目既有的 --cc-* 命名，便于将来与主程序共用。
+           本页为独立静态页，样式全部手写，不依赖 static/css/main.css。
+           ========================================================================== */
+
+        :root {
+            /* 色彩 */
+            --cc-bg: #f7f8fa;
+            --cc-surface: #ffffff;
+            --cc-line: #e4e7ec;
+            --cc-line-strong: #cbd2dc;
+            --cc-ink: #1f2430;
+            --cc-sub: #5f6b7a;
+            --cc-muted: #98a1b0;
+            --cc-accent: #2563eb;
+            --cc-accent-hover: #1d4ed8;
+            --cc-accent-soft: #eff4ff;
+            --cc-accent-line: #dbe6ff;
+
+            /* 尺度 */
+            --cc-r-sm: 8px;
+            --cc-r: 10px;
+            --cc-r-lg: 12px;
+            --cc-wrap: 1120px;
+            --cc-gutter: clamp(20px, 5vw, 40px);
+
+            /* 阴影（与主程序 .shadow-custom 同源，再补一层蓝调悬浮影） */
+            --cc-shadow-card: 0 1px 2px rgba(31, 36, 48, .03), 0 4px 16px -8px rgba(31, 36, 48, .06);
+            --cc-shadow-lift: 0 8px 18px -8px rgba(37, 99, 235, .42), 0 2px 6px rgba(31, 36, 48, .06);
+            --cc-ring: 0 0 0 3px rgba(37, 99, 235, .12);
+
+            /* 排版：与主程序 tailwind.config.js 的 sans 栈逐字一致（Nunito 优先，未加载时回落系统 UI） */
+            --cc-font: Nunito, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            --cc-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+            /* 动效 */
+            --cc-ease: cubic-bezier(.22, .8, .3, 1);
+            --cc-dur: .18s;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html { -webkit-text-size-adjust: 100%; }
+
+        body {
+            margin: 0;
+            background: var(--cc-bg);
+            color: var(--cc-ink);
+            font-family: var(--cc-font);
+            font-size: 16px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        img, svg { display: block; max-width: 100%; }
+        a { color: inherit; text-decoration: none; }
+        h1, h2, h3, p, figure { margin: 0; }
+        ul { margin: 0; padding: 0; list-style: none; }
+        button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+        /* 键盘焦点：统一品牌色焦点环 */
+        :where(a, button):focus-visible {
+            outline: 2px solid var(--cc-accent);
+            outline-offset: 2px;
+            border-radius: var(--cc-r-sm);
+        }
+
+        /* 跳到主要内容 */
+        .skip {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 200;
+            background: var(--cc-accent);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 0 0 var(--cc-r-sm) 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .skip:focus { left: 0; }
+
+        /* ---------- 通用容器 ---------- */
+        .wrap {
+            width: 100%;
+            max-width: var(--cc-wrap);
+            margin-inline: auto;
+            padding-inline: var(--cc-gutter);
+        }
+
+        /* ---------- 按钮 ---------- */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 20px;
+            border: 1px solid transparent;
+            border-radius: var(--cc-r-sm);
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+            transition: transform var(--cc-dur) var(--cc-ease),
+                        box-shadow var(--cc-dur) var(--cc-ease),
+                        background-color var(--cc-dur) var(--cc-ease),
+                        border-color var(--cc-dur) var(--cc-ease),
+                        color var(--cc-dur) var(--cc-ease);
+            will-change: transform;
+        }
+        .btn svg { width: 17px; height: 17px; flex: none; }
+
+        .btn--primary {
+            background: var(--cc-accent);
+            color: #fff;
+            box-shadow: 0 1px 2px rgba(31, 36, 48, .08);
+        }
+        .btn--primary:hover {
+            background: var(--cc-accent-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--cc-shadow-lift);
+        }
+        .btn--primary:active { transform: translateY(0) scale(.98); box-shadow: 0 1px 3px rgba(31, 36, 48, .12); }
+
+        .btn--ghost {
+            background: var(--cc-surface);
+            color: var(--cc-ink);
+            border-color: var(--cc-line-strong);
+        }
+        .btn--ghost:hover {
+            border-color: var(--cc-accent);
+            color: var(--cc-accent);
+            background: var(--cc-accent-soft);
+        }
+        .btn--ghost:active { transform: scale(.98); }
+
+        .btn--sm { padding: 8px 14px; font-size: 14px; }
+
+        /* ---------- 顶部导航 ---------- */
+        .hdr {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: var(--cc-surface);
+            border-bottom: 1px solid var(--cc-line);
+            box-shadow: 0 1px 2px rgba(31, 36, 48, .04);
+        }
+        .hdr__in {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            min-height: 64px;
+        }
+        .brand { display: inline-flex; align-items: center; flex: none; }
+        .brand__img { height: 38px; width: auto; }
+
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            margin-left: auto;
+        }
+        .nav__link {
+            padding: 8px 13px;
+            border-radius: var(--cc-r-sm);
+            font-size: 14.5px;
+            font-weight: 500;
+            color: var(--cc-sub);
+            transition: background-color var(--cc-dur) var(--cc-ease), color var(--cc-dur) var(--cc-ease);
+        }
+        .nav__link:hover { background: var(--cc-accent-soft); color: var(--cc-accent); }
+
+        .hdr__cta { margin-left: 8px; }
+
+        /* ---------- 首屏 ---------- */
+        .hero { padding: clamp(44px, 6.5vw, 78px) 0 clamp(44px, 6vw, 76px); }
+        .hero__in {
+            display: grid;
+            gap: clamp(32px, 5vw, 52px);
+            align-items: center;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 13px;
+            border: 1px solid var(--cc-accent-line);
+            border-radius: 999px;
+            background: var(--cc-accent-soft);
+            color: var(--cc-accent);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: .01em;
+        }
+        .eyebrow svg { width: 14px; height: 14px; }
+
+        .hero h1 {
+            margin-top: 18px;
+            font-size: clamp(2.05rem, 4.7vw, 3.35rem);
+            line-height: 1.12;
+            font-weight: 800;
+            letter-spacing: -.022em;
+            text-wrap: balance;
+        }
+        /* 副标题独立成行并降一档字号：品牌名一行、主张一行，避免 9 字标题被挤到折行 */
+        .hero h1 span {
+            display: block;
+            margin-top: .12em;
+            font-size: .7em;
+            line-height: 1.18;
+            color: var(--cc-accent);
+            letter-spacing: -.02em;
+        }
+
+        .lede {
+            margin-top: 18px;
+            max-width: 34em;
+            font-size: clamp(1rem, 1.5vw, 1.1rem);
+            color: var(--cc-sub);
+        }
+
+        .cta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 28px;
+        }
+
+        .trust {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 22px;
+            margin-top: 30px;
+            padding-top: 24px;
+            border-top: 1px solid var(--cc-line);
+        }
+        .trust li {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 13.5px;
+            color: var(--cc-sub);
+        }
+        .trust svg { width: 15px; height: 15px; flex: none; color: var(--cc-accent); }
+
+        /* ---------- 首屏右侧：真实图片卡片（同时是产品演示） ---------- */
+        .demo {
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-line);
+            border-radius: var(--cc-r-lg);
+            box-shadow: var(--cc-shadow-card);
+            overflow: hidden;
+        }
+        .demo__media { background: var(--cc-bg); }
+        .demo__media img { width: 100%; height: auto; }
+
+        .demo__meta {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 16px 16px;
+            border-top: 1px solid var(--cc-line);
+        }
+        .demo__head {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-width: 0;
+        }
+        .demo__name {
+            font-size: 13.5px;
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .tag {
+            flex: none;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--cc-accent-soft);
+            color: var(--cc-accent);
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: .02em;
+        }
+        .demo__size { margin-left: auto; font-size: 12.5px; color: var(--cc-muted); }
+
+        .field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border: 1px solid var(--cc-line);
+            border-radius: var(--cc-r-sm);
+            background: var(--cc-bg);
+        }
+        .field__url {
+            flex: 1 1 auto;
+            min-width: 0;
+            font-family: var(--cc-mono);
+            font-size: 12px;
+            color: var(--cc-sub);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: text;
+            -webkit-user-select: all;
+            user-select: all;   /* 点一下即整段选中，便于手动复制 */
+        }
+        .field__btn {
+            flex: none;
+            padding: 3px 9px;
+            border-radius: 6px;
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-line-strong);
+            color: var(--cc-sub);
+            font-size: 12px;
+            font-weight: 600;
+            transition: color var(--cc-dur) var(--cc-ease), border-color var(--cc-dur) var(--cc-ease);
+        }
+        .field__btn:hover { color: var(--cc-accent); border-color: var(--cc-accent); }
+        .field__btn.is-done { color: var(--cc-accent); border-color: var(--cc-accent); }
+
+        /* ---------- 区块 ---------- */
+        .sec { padding: clamp(52px, 7vw, 84px) 0; background: var(--cc-surface); }
+        .sec--first { border-top: 1px solid var(--cc-line); }
+        .sec--split { border-top: 1px solid var(--cc-line); }
+
+        .sec__title {
+            font-size: clamp(1.6rem, 3.1vw, 2.25rem);
+            line-height: 1.2;
+            font-weight: 800;
+            letter-spacing: -.018em;
+            max-width: 22em;
+        }
+        .sec__sub {
+            margin-top: 14px;
+            max-width: 46em;
+            color: var(--cc-sub);
+        }
+
+        /* ---------- 功能卡 ---------- */
+        .feats {
+            display: grid;
+            gap: 18px;
+            margin-top: clamp(28px, 4vw, 44px);
+        }
+        .feat {
+            padding: 22px 22px 24px;
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-line);
+            border-radius: var(--cc-r-lg);
+            box-shadow: var(--cc-shadow-card);
+            transition: transform var(--cc-dur) var(--cc-ease),
+                        box-shadow var(--cc-dur) var(--cc-ease),
+                        border-color var(--cc-dur) var(--cc-ease);
+        }
+        .feat:hover {
+            transform: translateY(-2px);
+            border-color: var(--cc-accent-line);
+            box-shadow: var(--cc-shadow-lift);
+        }
+        .feat__icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: var(--cc-r);
+            background: var(--cc-accent-soft);
+            color: var(--cc-accent);
+        }
+        .feat__icon svg { width: 21px; height: 21px; }
+        .feat h3 { margin-top: 16px; font-size: 1.0625rem; font-weight: 700; }
+        .feat p { margin-top: 9px; font-size: 14.5px; color: var(--cc-sub); }
+
+        /* ---------- 图文区块 ---------- */
+        .show__in {
+            display: grid;
+            gap: clamp(26px, 4.5vw, 54px);
+            align-items: center;
+        }
+        .show__media { margin: 0; }
+        .show__media img {
+            width: 100%;
+            height: auto;
+            border: 1px solid var(--cc-line);
+            border-radius: var(--cc-r-lg);
+            background: var(--cc-bg);
+        }
+        .show__body { max-width: 32em; }
+        .show h2 {
+            font-size: clamp(1.5rem, 2.9vw, 2.1rem);
+            line-height: 1.22;
+            font-weight: 800;
+            letter-spacing: -.018em;
+        }
+        .show p { margin-top: 16px; color: var(--cc-sub); }
+
+        /* 视觉左右：DOM 顺序恒为「图 → 文」，方向交给 CSS，语义与观感解耦 */
+        @media (min-width: 980px) {
+            .hero__in { grid-template-columns: 1.02fr .98fr; }
+            .feats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .show__in { grid-template-columns: 1fr 1fr; }
+            .show--rev .show__media { order: 2; }
+        }
+        @media (min-width: 1080px) {
+            .feats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+
+        /* ---------- 页脚 ---------- */
+        .ftr {
+            background: var(--cc-surface);
+            border-top: 1px solid var(--cc-line);
+            padding: clamp(34px, 5vw, 46px) 0 clamp(30px, 4vw, 38px);
+            text-align: center;
+            font-size: 13.5px;
+            color: var(--cc-sub);
+        }
+        .beian {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 10px 24px;
+        }
+        .beian a {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            transition: color var(--cc-dur) var(--cc-ease);
+        }
+        .beian a:hover { color: var(--cc-accent); }
+        .beian img { width: 20px; height: 20px; flex: none; }
+
+        .since { margin-top: 16px; }
+        .since b { color: var(--cc-accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+        /* ---------- 减少动态效果 ---------- */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .01ms !important;
+                scroll-behavior: auto !important;
+            }
+            .btn:hover, .feat:hover, .btn--ghost:active, .btn--primary:active { transform: none; }
+        }
+
+        /* 小屏：logo 与导航同排不换行，整体收紧一档 */
+        @media (max-width: 719px) {
+            .hdr__in { gap: 10px; }
+            .nav { gap: 0; }
+            .nav__link { padding: 8px 9px; font-size: 14px; }
+            .hdr__cta { margin-left: 4px; }
+            .brand__img { height: 32px; }
+            .trust { gap: 10px 18px; }
+        }
+
+        /* 极窄屏（<360px）：赞助按钮收成纯图标，保证 logo 与两项导航同排 */
+        @media (max-width: 359px) {
+            .nav__link { padding: 8px 8px; font-size: 13.5px; }
+            .hdr__cta { padding: 8px 9px; }
+            .cta__txt { display: none; }
+            .brand__img { height: 30px; }
+        }
+    </style>
+
+    <!-- 无 JS 环境下运行时长无法计算：整行隐藏，避免出现「— 天 — 时」这类看起来坏掉的内容 -->
+    <noscript><style>.since { display: none; }</style></noscript>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="hdr">
+    <div class="wrap hdr__in">
+        <a class="brand" href="https://tc.mofashi.ltd/" aria-label="魔法师图床 首页">
+            <picture>
+                <source srcset="static/images/logo-horiz-540.webp" type="image/webp">
+                <img class="brand__img" src="static/images/logo-horiz-540.png"
+                     width="540" height="200" alt="魔法师图床" decoding="async">
+            </picture>
+        </a>
+
+        <nav class="nav" aria-label="主导航">
+            <a class="nav__link" href="/analytics.html">统计</a>
+            <a class="nav__link" href="https://status.mofashi.ltd/status/img" target="_blank" rel="noopener">状态</a>
+            <a class="btn btn--primary btn--sm hdr__cta" href="https://afd.mofashi.ltd" target="_blank" rel="noopener"
+               aria-label="赞助我们" title="赞助我们">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20.3l-1.2-1.1C6 14.8 3.5 12.5 3.5 9.7 3.5 7.4 5.3 5.6 7.6 5.6c1.3 0 2.6.6 3.4 1.6.8-1 2.1-1.6 3.4-1.6 2.3 0 4.1 1.8 4.1 4.1 0 2.8-2.5 5.1-7.3 9.5L12 20.3z"/>
+                </svg>
+                <span class="cta__txt">赞助我们</span>
+            </a>
+        </nav>
+    </div>
+</header>
+
+<main id="main">
+
+    <!-- ============ 首屏 ============ -->
+    <section class="hero">
+        <div class="wrap hero__in">
+            <div>
+                <span class="eyebrow">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M12 3l7.5 3v6c0 4.2-2.9 7.9-7.5 9-4.6-1.1-7.5-4.8-7.5-9V6L12 3z"/>
+                        <path d="M9 12l2.1 2.1L15.5 10"/>
+                    </svg>
+                    永久免费 · 公益图床
+                </span>
+
+                <h1>魔法师图床<span>简单、好用、永久免费</span></h1>
+
+                <p class="lede">
+                    基于兰空图床搭建，配合全球 CDN 加速、对象存储与多机镜像架构。把图片拖进去，外链当场就能用。
+                </p>
+
+                <div class="cta-row">
+                    <a class="btn btn--primary" href="https://tc.mofashi.ltd/index.php" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 16V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/>
+                            <path d="M4.5 15v3.5A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5V15"/>
+                        </svg>
+                        上传图片
+                    </a>
+                    <a class="btn btn--ghost" href="/login">登录 / 注册</a>
+                </div>
+
+                <ul class="trust">
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M3 12h18"/>
+                            <path d="M12 3c2.6 2.8 2.6 15.2 0 18M12 3c-2.6 2.8-2.6 15.2 0 18"/>
+                        </svg>
+                        全球 CDN 加速
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M4 9V5.5A1.5 1.5 0 015.5 4H9"/>
+                            <path d="M15 4h3.5A1.5 1.5 0 0120 5.5V9"/>
+                            <path d="M20 15v3.5a1.5 1.5 0 01-1.5 1.5H15"/>
+                            <path d="M9 20H5.5A1.5 1.5 0 014 18.5V15"/>
+                        </svg>
+                        上传前自动压缩
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="4" y="10.5" width="16" height="10" rx="2"/>
+                            <path d="M8 10.5v-3a4 4 0 017.4-2.1"/>
+                        </svg>
+                        无需注册即可上传
+                    </li>
+                </ul>
+            </div>
+
+            <!-- 一张真实存放在本图床上的图片：既作首屏视觉，也直观演示「上传后拿到直链」 -->
+            <figure class="demo">
+                <div class="demo__media">
+                    <img src="static/images/hero-1100.webp"
+                         srcset="static/images/hero-720.webp 720w, static/images/hero-1100.webp 1100w"
+                         sizes="(min-width: 980px) 500px, calc(100vw - 44px)"
+                         width="1100" height="640" fetchpriority="high" decoding="async"
+                         alt="示例：一张通过魔法师图床托管并经由 CDN 分发的插画作品">
+                </div>
+                <figcaption class="demo__meta">
+                    <div class="demo__head">
+                        <span class="tag">WEBP</span>
+                        <span class="demo__name">测试图片</span>
+                        <span class="demo__size">4300 × 2500</span>
+                    </div>
+                    <div class="field">
+                        <span class="field__url" id="demo-url" title="https://free-img.mofashi.ltd/5/2026/08/22/6a89ae697d594.webp">https://free-img.mofashi.ltd/5/2026/08/22/6a89ae697d594.webp</span>
+                        <button class="field__btn" id="copy-link" type="button" aria-label="复制该图片直链">复制</button>
+                    </div>
+                </figcaption>
+            </figure>
+        </div>
+    </section>
+
+    <!-- ============ 特性 ============ -->
+    <section class="sec sec--first">
+        <div class="wrap">
+            <h2 class="sec__title">探索更多的可能。</h2>
+            <p class="sec__sub">不只是把图片传上去 —— 稳定、安全、快、免费，四件事我们同时做到。</p>
+
+            <div class="feats">
+                <div class="feat">
+                    <span class="feat__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="7" rx="2"/>
+                            <rect x="3" y="13" width="18" height="7" rx="2"/>
+                            <path d="M7 7.5h.01M7 16.5h.01"/>
+                        </svg>
+                    </span>
+                    <h3>稳定服务</h3>
+                    <p>魔法师图床使用高性能物理服务器，为图床服务提供了健壮稳固的底层基础。</p>
+                </div>
+
+                <div class="feat">
+                    <span class="feat__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3l7.5 3v6c0 4.2-2.9 7.9-7.5 9-4.6-1.1-7.5-4.8-7.5-9V6L12 3z"/>
+                            <path d="M9 12l2.1 2.1L15.5 10"/>
+                        </svg>
+                    </span>
+                    <h3>安全可靠</h3>
+                    <p>全站启用质量可靠的 SSL 证书，最低 TLS 版本为 1.2，保障文件不被篡改。</p>
+                </div>
+
+                <div class="feat">
+                    <span class="feat__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 14.5l4.2-4.2"/>
+                            <path d="M4.6 18.5a9 9 0 1114.8 0"/>
+                        </svg>
+                    </span>
+                    <h3>高速传输</h3>
+                    <p>使用全球 CDN 进行加速，全面采用优化后线路，保证每一次访问的速度。</p>
+                </div>
+
+                <div class="feat">
+                    <span class="feat__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 20.3l-1.2-1.1C6 14.8 3.5 12.5 3.5 9.7 3.5 7.4 5.3 5.6 7.6 5.6c1.3 0 2.6.6 3.4 1.6.8-1 2.1-1.6 3.4-1.6 2.3 0 4.1 1.8 4.1 4.1 0 2.8-2.5 5.1-7.3 9.5L12 20.3z"/>
+                        </svg>
+                    </span>
+                    <h3>公益免费</h3>
+                    <p>魔法师图床永久免费使用，用户无需交付任何费用，目前仅接受服务赞助。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ 图文 1：图右 ============ -->
+    <section class="sec sec--split show show--rev">
+        <div class="wrap show__in">
+            <figure class="show__media">
+                <img src="static/images/lankong.jpg" width="1080" height="720" loading="lazy" decoding="async"
+                     alt="兰空图床程序界面">
+            </figure>
+            <div class="show__body">
+                <h2>好评如潮的图床程序</h2>
+                <p>我们使用的图床程序为兰空图床，她优雅且快速、简洁且强大，获得了用户的一致好评。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ 图文 2：图左 ============ -->
+    <section class="sec sec--split show">
+        <div class="wrap show__in">
+            <figure class="show__media">
+                <img src="static/images/cdn-edgeone-cloudflare.jpg" width="1080" height="720" loading="lazy" decoding="async"
+                     alt="腾讯云 EdgeOne 与 CloudFlare 全球加速节点分布示意">
+            </figure>
+            <div class="show__body">
+                <h2>难以想象的全球加速网络</h2>
+                <p>得益于腾讯云 EdgeOne 与 CloudFlare 的全球加速节点，在每个地区都可以访问。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ 图文 3：图右 ============ -->
+    <section class="sec sec--split show show--rev">
+        <div class="wrap show__in">
+            <figure class="show__media">
+                <img src="static/images/ha-selfhosted-mirror.jpg" width="1080" height="720" loading="lazy" decoding="async"
+                     alt="自建存储服务器与多机镜像运行架构示意">
+            </figure>
+            <div class="show__body">
+                <h2>永不宕机的运行架构</h2>
+                <p>通过多台服务器反代、相互镜像，使用自建存储服务器与腾讯云 EdgeOne、CloudFlare CDN 等方式保证极高的 SLA。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ 图文 4：图左 ============ -->
+    <section class="sec sec--split show">
+        <div class="wrap show__in">
+            <figure class="show__media">
+                <img src="static/images/uptime-kuma.jpg" width="1080" height="720" loading="lazy" decoding="async"
+                     alt="Uptime Kuma 服务器监控面板">
+            </figure>
+            <div class="show__body">
+                <h2>土豆熟了没一目了然</h2>
+                <p>使用 Uptime Kuma 监控每台服务器的运行状况，同时实时监控不同线路 CDN 的在线情况。</p>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer class="ftr">
+    <div class="wrap">
+        <nav class="beian" aria-label="备案信息">
+            <a href="https://beian.miit.gov.cn/" rel="noopener">
+                <img src="https://vip-img.mofashi.ltd/2/2024/03/05/65e7168e4a93c.png" width="20" height="20" loading="lazy" decoding="async" alt="">
+                鲁ICP备2022005744号-1
+            </a>
+            <a href="https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=鲁公网安备37152102000141号" rel="noopener">
+                <img src="https://vip-img.mofashi.ltd/2/2024/03/29/6606a53662cef.webp" width="20" height="20" loading="lazy" decoding="async" alt="">
+                鲁公网安备37152102000141号
+            </a>
+        </nav>
+
+        <p class="since">本站已安全运行：<span id="uptime"><b data-u="d">—</b> 天 <b data-u="h">—</b> 时 <b data-u="m">—</b> 分 <b data-u="s">—</b> 秒</span></p>
+    </div>
+</footer>
+
+<script>
+    /* 运行时长：按站点实际上线时间累加。
+       原实现每秒重建 innerHTML（内含 <font>），这里改为 4 个固定 <b> 只更新 textContent，
+       既避开 innerHTML 重解析，也不再用已废弃的 <font>，着色交给 CSS。 */
+    (function () {
+        var root = document.getElementById('uptime');
+        if (!root) return;
+
+        var slots = {
+            d: root.querySelector('[data-u="d"]'),
+            h: root.querySelector('[data-u="h"]'),
+            m: root.querySelector('[data-u="m"]'),
+            s: root.querySelector('[data-u="s"]')
+        };
+        if (!slots.d) return;
+
+        // 2023-02-04 00:00（东八区），显式带时区，避免不同设备时区解读不一致
+        var BIRTH = new Date('2023-02-04T00:00:00+08:00').getTime();
+
+        function tick() {
+            var ms = Date.now() - BIRTH;
+            if (ms < 0) ms = 0;
+            slots.d.textContent = Math.floor(ms / 86400000);
+            slots.h.textContent = Math.floor((ms % 86400000) / 3600000);
+            slots.m.textContent = Math.floor((ms % 3600000) / 60000);
+            slots.s.textContent = Math.floor((ms % 60000) / 1000);
+        }
+
+        tick();
+        setInterval(tick, 1000);
+    })();
+
+    /* 复制直链：作为渐进增强，不支持 Clipboard API 时直接隐藏按钮 */
+    (function () {
+        var btn = document.getElementById('copy-link');
+        var src = document.getElementById('demo-url');
+        if (!btn || !src) return;
+
+        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+            btn.remove();
+            return;
+        }
+
+        btn.addEventListener('click', function () {
+            navigator.clipboard.writeText(src.textContent.trim()).then(function () {
+                btn.textContent = '已复制';
+                btn.classList.add('is-done');
+                setTimeout(function () {
+                    btn.textContent = '复制';
+                    btn.classList.remove('is-done');
+                }, 1600);
+            }).catch(function () {
+                btn.textContent = '请手动复制';
+                setTimeout(function () { btn.textContent = '复制'; }, 1600);
+            });
+        });
+    })();
+</script>
+</body>
+</html>

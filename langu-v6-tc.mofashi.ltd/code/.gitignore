@@ -1,0 +1,48 @@
+/installed.lock
+/upgrading.lock
+/*.zip
+/node_modules
+/public/hot
+/public/storage
+/public/js/custom.js
+/storage/*.key
+/vendor
+.env
+.env.backup
+.phpunit.result.cache
+docker-compose.override.yml
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+/.idea
+/.vscode
+/public/i
+
+# ===== 本地运行时 / 工具产物 =====
+/.workbuddy
+/storage/temp
+/storage/debugbar
+/storage/logs/*
+!/storage/logs/.gitignore
+/debug.log
+
+# ===== 数据库导出（含生产数据，禁止入库）=====
+/tc_*.sql
+
+# ===== 本地储存策略生成的符号链接（部署时由程序按策略自动重建）=====
+/public/jpg
+/public/png
+/public/webp
+/public/jpeg
+/public/thumbnails
+
+# ===== 证书签发 / 域名校验临时文件 =====
+/public/.well-known
+
+# ===== 备份副本 / 设计稿 / 生成物 =====
+*-副本.*
+_*.png
+/public/preview
+/404.html
+/tc.mofashi.ltd*.xml

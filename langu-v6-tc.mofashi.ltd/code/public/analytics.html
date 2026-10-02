@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>魔法师图床 · 数据统计</title>
+    <meta name="description" content="魔法师图床 Cloudflare 线路的流量与请求统计。">
+    <meta name="theme-color" content="#2563eb">
+
+    <!-- favicon（与首页保持一致） -->
+    <link rel="icon" type="image/png" sizes="64x64" href="static/images/favicon-64.png">
+    <link rel="shortcut icon" href="static/images/favicon-64.png">
+    <link rel="apple-touch-icon" href="static/images/apple-touch-icon.png">
+
+    <link href="https://cdn-jsdelivr.mofashi.ltd/npm/chart.js@2.9.4/dist/Chart.min.css" rel="stylesheet">
+    <style>
+        /* ==========================================================================
+           魔法师图床 · 数据统计页样式
+           设计语言：与静态首页 public/index.html 共用同一套 "Corporate Clean" 令牌
+             · 浅灰底 #f7f8fa + 白卡片，1px 细描边 #e4e7ec
+             · 品牌蓝 #2563eb，圆角 8 / 10 / 12px
+             · 无渐变、无发光，靠细边框与微阴影体现质感
+           令牌取值逐字抄自 index.html，改首页配色时这里要一起改。
+           ========================================================================== */
+
+        :root {
+            /* 色彩 */
+            --cc-bg: #f7f8fa;
+            --cc-surface: #ffffff;
+            --cc-line: #e4e7ec;
+            --cc-line-strong: #cbd2dc;
+            --cc-ink: #1f2430;
+            --cc-sub: #5f6b7a;
+            --cc-muted: #98a1b0;
+            --cc-accent: #2563eb;
+            --cc-accent-hover: #1d4ed8;
+            --cc-accent-soft: #eff4ff;
+            --cc-accent-line: #dbe6ff;
+
+            /* 图表用色：品牌蓝 + 中性石板灰（首页只有蓝这一支强调色，第二支走中性） */
+            --cc-chart-req: #2563eb;
+            --cc-chart-req-fill: rgba(37, 99, 235, .10);
+            --cc-chart-bytes: #64748b;
+            --cc-chart-bytes-fill: rgba(100, 116, 139, .10);
+            --cc-grid: rgba(31, 36, 48, .06);
+            --cc-danger: #b91c1c;
+
+            /* 尺度 */
+            --cc-r-sm: 8px;
+            --cc-r: 10px;
+            --cc-r-lg: 12px;
+            --cc-wrap: 1120px;
+            --cc-gutter: clamp(20px, 5vw, 40px);
+
+            /* 阴影（与首页同源） */
+            --cc-shadow-card: 0 1px 2px rgba(31, 36, 48, .03), 0 4px 16px -8px rgba(31, 36, 48, .06);
+
+            /* 排版：与首页逐字一致（Nunito 优先，未加载时回落系统 UI） */
+            --cc-font: Nunito, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            --cc-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+            /* 动效 */
+            --cc-ease: cubic-bezier(.22, .8, .3, 1);
+            --cc-dur: .18s;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html { -webkit-text-size-adjust: 100%; }
+
+        body {
+            margin: 0;
+            background: var(--cc-bg);
+            color: var(--cc-ink);
+            font-family: var(--cc-font);
+            font-size: 16px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        img, svg { display: block; max-width: 100%; }
+        a { color: inherit; text-decoration: none; }
+        h1, h2, p { margin: 0; }
+
+        :where(a, button):focus-visible {
+            outline: 2px solid var(--cc-accent);
+            outline-offset: 2px;
+            border-radius: var(--cc-r-sm);
+        }
+
+        /* 跳到主要内容 */
+        .skip {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 200;
+            background: var(--cc-accent);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 0 0 var(--cc-r-sm) 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .skip:focus { left: 0; }
+
+        .wrap {
+            width: 100%;
+            max-width: var(--cc-wrap);
+            margin-inline: auto;
+            padding-inline: var(--cc-gutter);
+        }
+
+        /* ---------- 顶部导航（与首页同款，仅保留品牌与时钟） ---------- */
+        .hdr {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: var(--cc-surface);
+            border-bottom: 1px solid var(--cc-line);
+            box-shadow: 0 1px 2px rgba(31, 36, 48, .04);
+        }
+        .hdr__in {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            min-height: 64px;
+        }
+        .brand { display: inline-flex; align-items: center; flex: none; }
+        .brand__img { height: 38px; width: auto; }
+        .clock {
+            margin-left: auto;
+            font-size: 13px;
+            color: var(--cc-sub);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+
+        /* ---------- 主体 ---------- */
+        .page { padding-block: clamp(28px, 4vw, 40px) clamp(44px, 6vw, 64px); }
+
+        .page__title {
+            font-size: clamp(1.4rem, 3.2vw, 1.75rem);
+            font-weight: 800;
+            letter-spacing: -.022em;
+        }
+        .meta {
+            margin-top: 6px;
+            font-size: 12.5px;
+            color: var(--cc-sub);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+            margin-top: 22px;
+        }
+        @media (min-width: 768px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+
+        .metric {
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-line);
+            border-radius: var(--cc-r-lg);
+            box-shadow: var(--cc-shadow-card);
+            padding: 18px 18px 16px;
+            min-width: 0;
+        }
+        .metric .label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--cc-sub);
+            margin-bottom: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .metric .value {
+            font-size: clamp(18px, 4.6vw, 26px);
+            font-weight: 700;
+            letter-spacing: -.5px;
+            line-height: 1.15;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .panel {
+            background: var(--cc-surface);
+            border: 1px solid var(--cc-line);
+            border-radius: var(--cc-r-lg);
+            box-shadow: var(--cc-shadow-card);
+            margin-top: 14px;
+            padding: 20px 20px 16px;
+        }
+        .panel h2 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--cc-sub);
+            letter-spacing: .04em;
+            margin-bottom: 16px;
+        }
+        .panel h2 .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 2px;
+            background: var(--dot, var(--cc-chart-req));
+            flex: none;
+        }
+        .chart-box { height: 300px; position: relative; }
+        @media (max-width: 767px) { .chart-box { height: 240px; } }
+        .chart-fallback {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 0 12px;
+            font-size: 13px;
+            color: var(--cc-sub);
+            text-align: center;
+        }
+
+        .status {
+            margin-top: 16px;
+            font-size: 12px;
+            color: var(--cc-sub);
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        .status--err { color: var(--cc-danger); }
+
+        /* ---------- 页脚 ---------- */
+        .ftr {
+            background: var(--cc-surface);
+            border-top: 1px solid var(--cc-line);
+            padding-block: clamp(24px, 3.4vw, 32px);
+            text-align: center;
+            font-size: 12.5px;
+            line-height: 2;
+            color: var(--cc-sub);
+        }
+        .ftr a { color: var(--cc-accent); }
+        .ftr a:hover { color: var(--cc-accent-hover); text-decoration: underline; text-underline-offset: 2px; }
+
+        /* ---------- 小屏 ---------- */
+        @media (max-width: 719px) {
+            .hdr__in { gap: 10px; min-height: 56px; }
+            .brand__img { height: 32px; }
+            .clock { font-size: 12px; }
+        }
+        @media (max-width: 359px) {
+            .brand__img { height: 28px; }
+            .clock { font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+
+<header class="hdr">
+    <div class="wrap hdr__in">
+        <a class="brand" href="/" aria-label="魔法师图床 首页">
+            <picture>
+                <source srcset="static/images/logo-horiz-540.webp" type="image/webp">
+                <img class="brand__img" src="static/images/logo-horiz-540.png"
+                     width="540" height="200" alt="魔法师图床" decoding="async">
+            </picture>
+        </a>
+        <span class="clock" id="currentTime"></span>
+    </div>
+</header>
+
+<main id="main" class="wrap page">
+    <h1 class="page__title">数据概览</h1>
+    <p class="meta" id="windowInfo">统计数据加载中…</p>
+
+    <div class="grid">
+        <div class="metric">
+            <div class="label">近 24 小时 · 请求量</div>
+            <div class="value" id="reqValue">—</div>
+        </div>
+        <div class="metric">
+            <div class="label">近 24 小时 · 流量</div>
+            <div class="value" id="trafficValue">—</div>
+        </div>
+        <div class="metric">
+            <div class="label">缓存命中率</div>
+            <div class="value" id="hitValue">—</div>
+        </div>
+        <div class="metric">
+            <div class="label">回源流量</div>
+            <div class="value" id="originValue">—</div>
+        </div>
+    </div>
+
+    <section class="panel">
+        <h2><span class="dot"></span>近 7 天 · 请求量</h2>
+        <div class="chart-box"><canvas id="requestsChart"></canvas></div>
+    </section>
+
+    <section class="panel">
+        <h2><span class="dot" style="--dot: var(--cc-chart-bytes)"></span>近 7 天 · 流量</h2>
+        <div class="chart-box"><canvas id="bytesChart"></canvas></div>
+    </section>
+
+    <p class="status" id="status">正在加载数据…</p>
+    <noscript><p class="status status--err">本页需要启用 JavaScript 才能读取统计数据。</p></noscript>
+</main>
+
+<footer class="ftr">
+    <div class="wrap">
+        趋势图末点为当日累计（未满 24 小时）<br>
+        面板仅保留近 7 天明细<br>
+        每 5 分钟自动刷新 · <a href="/">返回首页</a>
+    </div>
+</footer>
+
+<script src="https://cdn-jsdelivr.mofashi.ltd/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
+
+<script>
+(function () {
+    'use strict';
+
+    var API_BASE = 'https://cdnpanel.mofashi.ltd';
+    var API_TOKEN = 'b8ede8bb0127559f03be9bcb0810b874a05a1821';
+    var VENDOR = 'cloudflare';
+    var REFRESH_MS = 5 * 60 * 1000;
+
+    var CSS = getComputedStyle(document.documentElement);
+    var TOKEN = function (name, fallback) {
+        var v = CSS.getPropertyValue(name);
+        return (v && v.trim()) || fallback;
+    };
+
+    function $(id) { return document.getElementById(id); }
+
+    /* ---------- 数值格式化 ---------- */
+    // compact=true 用于坐标轴，位数更短
+    function fmtBytes(v, compact) {
+        if (v === null || v === undefined || isNaN(v)) return '—';
+        var units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'], i = 0;
+        while (v >= 1000 && i < units.length - 1) { v /= 1000; i++; }
+        if (i === 0) return Math.round(v) + ' ' + units[i];
+        return v.toFixed(compact ? (v >= 100 ? 0 : 1) : 2) + ' ' + units[i];
+    }
+
+    function fmtCount(v, compact) {
+        if (v === null || v === undefined || isNaN(v)) return '—';
+        if (v >= 1e8) return (v / 1e8).toFixed(compact ? 0 : 2) + ' 亿';
+        if (v >= 1e4) return (v / 1e4).toFixed(compact ? 0 : 1) + ' 万';
+        return String(Math.round(v));
+    }
+
+    function fmtPct(v) {
+        if (v === null || v === undefined || isNaN(v)) return '—';
+        return (v * 100).toFixed(1) + '%';
+    }
+
+    /* ---------- 取数 ---------- */
+    function api(path) {
+        return fetch(API_BASE + path, {
+            headers: { 'Authorization': 'Bearer ' + API_TOKEN },
+            cache: 'no-store'
+        }).then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        }).then(function (json) {
+            if (!json || json.success === false) {
+                throw new Error((json && json.error) || '接口返回失败');
+            }
+            return json;
+        });
+    }
+
+    /* ---------- 图表 ---------- */
+    var chartReq = null;
+    var chartBytes = null;
+
+    function createChart(canvasId, stroke, fill, fmt) {
+        var canvas = $(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return null;
+        return new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: '',
+                    data: [],
+                    backgroundColor: fill,
+                    borderColor: stroke,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    pointHoverBackgroundColor: stroke,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                legend: { display: false },
+                tooltips: {
+                    intersect: false,
+                    mode: 'index',
+                    displayColors: false,
+                    callbacks: {
+                        label: function (item) { return fmt(item.yLabel); }
+                    }
+                },
+                scales: {
+                    xAxes: [{
+                        gridLines: { color: TOKEN('--cc-grid', 'rgba(31,36,48,.06)'), drawTicks: false },
+                        ticks: {
+                            maxTicksLimit: 8,
+                            fontColor: TOKEN('--cc-muted', '#98a1b0'),
+                            padding: 10
+                        }
+                    }],
+                    yAxes: [{
+                        gridLines: { color: TOKEN('--cc-grid', 'rgba(31,36,48,.06)'), drawTicks: false },
+                        ticks: {
+                            beginAtZero: true,
+                            maxTicksLimit: 5,
+                            fontColor: TOKEN('--cc-muted', '#98a1b0'),
+                            callback: function (value) { return fmt(value, true); }
+                        }
+                    }]
+                }
+            }
+        });
+    }
+
+    function applyChart(chart, labels, values) {
+        if (!chart) return;
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = values;
+        chart.update();
+    }
+
+    /* ---------- 渲染 ---------- */
+    function renderSummary(json) {
+        var t = json.totals || {};
+        $('reqValue').textContent = fmtCount(t.requests);
+        $('trafficValue').textContent = fmtBytes(t.traffic_bytes);
+        $('hitValue').textContent = fmtPct(t.cache_hit_rate);
+        $('originValue').textContent = fmtBytes(t.origin_bytes);
+
+        var w = json.window;
+        $('windowInfo').textContent = w ? '统计窗口 ' + w.start + ' → ' + w.end : '';
+    }
+
+    function renderTrend(json) {
+        var series = (json.series || [])[0];
+        var datasets = (series && series.datasets) || {};
+        var labels = json.labels || [];
+        applyChart(chartReq, labels, datasets.requests || []);
+        applyChart(chartBytes, labels, datasets.traffic_bytes || []);
+    }
+
+    function setStatus(text, isError) {
+        var el = $('status');
+        el.textContent = text;
+        el.className = isError ? 'status status--err' : 'status';
+    }
+
+    function load() {
+        Promise.all([
+            api('/api/metrics/summary?range=24h&vendor=' + VENDOR),
+            api('/api/metrics/trend?range=7d&vendor=' + VENDOR)
+        ]).then(function (res) {
+            renderSummary(res[0]);
+            renderTrend(res[1]);
+            setStatus('数据更新于 ' + new Date().toLocaleTimeString('zh-CN') + '　·　每 5 分钟自动刷新', false);
+        }).catch(function (err) {
+            setStatus('数据加载失败：' + err.message + '（将在 5 分钟后重试）', true);
+        });
+    }
+
+    function tickClock() {
+        var now = new Date();
+        $('currentTime').textContent =
+            now.toLocaleDateString('zh-CN') + ' ' + now.toLocaleTimeString('zh-CN');
+    }
+
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    if (typeof Chart === 'undefined') {
+        ['requestsChart', 'bytesChart'].forEach(function (id) {
+            var canvas = $(id);
+            if (canvas && canvas.parentNode) {
+                canvas.parentNode.innerHTML = '<div class="chart-fallback">图表库加载失败，请刷新页面重试</div>';
+            }
+        });
+        setStatus('图表库加载失败，但上方指标仍会正常刷新。', true);
+    } else {
+        chartReq = createChart('requestsChart',
+            TOKEN('--cc-chart-req', '#2563eb'),
+            TOKEN('--cc-chart-req-fill', 'rgba(37,99,235,.10)'), fmtCount);
+        chartBytes = createChart('bytesChart',
+            TOKEN('--cc-chart-bytes', '#64748b'),
+            TOKEN('--cc-chart-bytes-fill', 'rgba(100,116,139,.10)'), fmtBytes);
+    }
+
+    load();
+    setInterval(load, REFRESH_MS);
+}());
+</script>
+</body>
+</html>

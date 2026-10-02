@@ -1,0 +1,391 @@
+@import '~toastr';
+
+[x-cloak] { display: none !important; }
+
+.scrollbar-none::-webkit-scrollbar {
+    display: none;
+}
+
+.scrollbar-none {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+}
+
+// 滚动条样式
+::-webkit-scrollbar {
+    width: 8px;
+    min-height: 8px;
+    height: 100%;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 6px;
+    background: #cad3e2;
+}
+
+::-webkit-scrollbar-track {
+    border-radius: 6px;
+    background: rgb(255, 255, 255);
+}
+
+progress::-webkit-progress-bar {
+    background-color: #d7d7d7;
+}
+
+progress::-webkit-progress-value {
+    background-color: #5dcafa;
+}
+
+#capacity-progress {
+    progress.green {
+        &::-webkit-progress-value {
+            background: #00ab00;
+        }
+    }
+    progress.yellowgreen {
+        &::-webkit-progress-value {
+            background: yellowgreen;
+        }
+    }
+    progress.yellow {
+        &::-webkit-progress-value {
+            background: #b9b900;
+        }
+    }
+    progress.orange {
+        &::-webkit-progress-value {
+            background: #ff9900;
+        }
+    }
+    progress.red {
+        &::-webkit-progress-value {
+            background: #ff4141;
+        }
+    }
+}
+
+#toast-container {
+    & > div {
+        font-size: 13px;
+        padding: 10px 10px 10px 50px;
+        box-shadow: 0 0 12px rgba(183, 183, 183, 0.47);
+
+        &:hover {
+            box-shadow: 0 0 12px rgba(161, 161, 161, 0.47);
+        }
+    }
+}
+
+.toast-close-button {
+    right: -0.15em;
+}
+
+.viewer-backdrop {
+    background-color: rgba(0, 0, 0, .75);
+}
+
+// infiniteScroll
+.infinite-scroll {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    justify-items: center;
+    padding: 3rem 0;
+    span {
+        display: inline-flex;
+        color: #626262;
+        font-size: .9em;
+        cursor: pointer;
+        &.disabled {
+            cursor: not-allowed;
+            color: grey;
+        }
+    }
+}
+
+// 我的图片
+#images-grid {
+    a:hover, a.ds-selected {
+        outline-color: #3b82f6;
+
+        .image-selector {
+            display: block;
+        }
+
+        &.ds-selected {
+            .image-selector {
+                i {
+                    border-color: white;
+                    color: #0061ff;
+                }
+            }
+        }
+    }
+}
+
+// 开关样式
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 55px;
+    height: 30px;
+}
+
+.switch input {display:none;}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 24px;
+    width: 24px;
+    left: 4px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+}
+
+input:checked + .slider {
+    background-color: #2563eb;
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px #2563eb;
+}
+
+input:checked + .slider:before {
+    transform: translateX(23px);
+}
+
+/* Rounded sliders */
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+// ===== Corporate Clean 企业简洁风 =====
+// 企业简洁：白/浅灰底、细边框、细微圆角、蓝色强调、专业克制、无渐变无发光
+
+// 设计令牌由 :root 注入，供全站覆盖引用
+:root {
+    --cc-bg: #f7f8fa;
+    --cc-surface: #ffffff;
+    --cc-line: #e4e7ec;
+    --cc-line-strong: #cbd2dc;
+    --cc-ink: #1f2430;
+    --cc-sub: #5f6b7a;
+    --cc-muted: #98a1b0;
+    --cc-accent: #2563eb;
+    --cc-accent-soft: #eff4ff;
+    --cc-ok: #16a34a;
+}
+
+// 整体背景
+.min-h-screen.bg-gray-100, body.bg-gray-100 {
+    background-color: #f7f8fa !important;
+}
+
+// 侧边栏 / 区块背景统一为白
+aside.bg-\[\#f8f9fa\], aside.bg-white, nav aside { background-color: #ffffff !important; }
+.bg-gray-50 { background-color: #f7f8fa !important; }
+
+// 顶栏：白底 + 细分割线 + 浅影，去渐变去深色
+header.fixed, .fixed.top-0, .topbar { 
+    background-color: rgba(255, 255, 255, .95) !important;
+    border-bottom: 1px solid #e4e7ec !important;
+    box-shadow: 0 1px 2px rgba(31, 36, 48, .04) !important;
+}
+.fixed.top-0 .text-white, header.fixed .text-white { color: #1f2430 !important; }
+.fixed.top-0 a.text-gray-300, header.fixed a.text-gray-300 { color: #5f6b7a !important; }
+.fixed.top-0 a.text-gray-300:hover, header.fixed a.text-gray-300:hover {
+    background: #eff4ff !important;
+    color: #2563eb !important;
+}
+.bg-gray-700 { background-color: #1f2430 !important; }
+
+// 表单控件：白底、细边框、8px 圆角、蓝色 focus
+input[type='text'], input[type='password'], input[type='email'], input[type='url'],
+select, textarea {
+    background-color: #ffffff !important;
+    border: 1px solid #cbd2dc !important;
+    border-radius: 8px !important;
+    color: #1f2430 !important;
+    padding: 8px 12px !important;
+    transition: border-color .15s ease, box-shadow .15s ease !important;
+}
+input[type='text']:focus, input[type='password']:focus, input[type='email']:focus,
+input[type='url']:focus, select:focus, textarea:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12) !important;
+    outline: none !important;
+}
+
+// 按钮：8px 圆角、主键蓝色、次键细边框
+button, .btn, .btn-primary, a.bg-blue-500, button[type='submit'] {
+    border-radius: 8px !important;
+    transition: all .15s ease !important;
+}
+a.bg-blue-500, button[type='submit'], .btn-solid, .btn-primary {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+}
+button:hover, .btn:hover { filter: brightness(1.05) !important; box-shadow: 0 4px 12px -6px rgba(37, 99, 235, .4) !important; }
+
+// toast 提示
+#toast-container > div {
+    border-radius: 10px !important;
+    box-shadow: 0 6px 20px -8px rgba(31, 36, 48, .18) !important;
+}
+
+// 滚动条
+::-webkit-scrollbar-thumb { background: #cbd2dc; border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+// 文本层级
+.text-gray-700 { color: #1f2430 !important; }
+.text-gray-500 { color: #5f6b7a !important; }
+
+// 上传拖拽区：细虚线 + 淡蓝底，企业清爽
+#picker-dnd {
+    border: 1.5px dashed #cbd2dc !important;
+    border-radius: 10px !important;
+    background-color: #fbfcfe !important;
+    transition: border-color .2s ease, background-color .2s ease !important;
+}
+#picker-dnd:hover {
+    border-color: #2563eb !important;
+    background-color: #eff4ff !important;
+}
+#upload-all i.fa-cloud-upload-alt { color: #2563eb !important; transition: transform .2s ease !important; }
+#upload-all:hover i.fa-cloud-upload-alt { transform: translateY(-2px); }
+
+// 激活 tab / 强调色统一为蓝
+.border-indigo-500, a.active { border-color: #2563eb !important; color: #2563eb !important; }
+
+// 卡片：shadow-custom 统一为企业细边框卡片（真实卡片容器，非颜色类）
+.shadow-custom {
+    border: 1px solid #e4e7ec !important;
+    border-radius: 12px !important;
+    box-shadow: 0 1px 2px rgba(31, 36, 48, .03), 0 4px 16px -8px rgba(31, 36, 48, .06) !important;
+}
+
+// ===== Corporate Clean 补充：全站强调色统一为品牌蓝 =====
+// Tailwind indigo/sky/violet/fuchsia 等杂色统一收敛为蓝色，消除各页观感不一致
+.text-indigo-600, .text-indigo-500, .text-sky-500, .text-sky-600, .text-violet-500,
+.text-fuchsia-500, .text-purple-500, .text-cyan-500, .text-teal-500 {
+    color: #2563eb !important;
+}
+.border-indigo-300, .border-indigo-200, .border-sky-300, .border-sky-500,
+.border-violet-300, .border-fuchsia-300, .border-purple-300, .border-cyan-300,
+.border-teal-300 { border-color: #bfdbfe !important; }
+.focus\:border-indigo-300:focus, .focus\:border-indigo-500:focus { border-color: #60a5fa !important; }
+.text-indigo-600:focus, .focus\:ring-indigo-200:focus, .focus\:ring-indigo-500:focus { box-shadow: 0 0 0 3px rgba(37, 99, 235, .15) !important; }
+
+// 链接统一为品牌蓝
+a { transition: color .15s ease; }
+a:not([class*='text-white']):not([class*='text-blue']):hover { color: #2563eb !important; }
+
+// 主操作按钮统一蓝色（覆盖各种内联 bg 类）
+.btn-primary, .bg-indigo-500, .bg-indigo-600, .bg-sky-500, .bg-sky-600,
+.bg-violet-500, .bg-purple-500, .bg-cyan-500, .bg-teal-500, .bg-blue-500 {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #ffffff !important;
+}
+.btn-primary:hover, .bg-indigo-600:hover, .bg-sky-600:hover,
+.bg-blue-500:hover, .bg-blue-600:hover { background-color: #1d4ed8 !important; }
+
+// 复选框/单选框品牌色
+input[type='checkbox'], input[type='radio'] { accent-color: #2563eb !important; }
+
+// 认证/通用提示条按钮等文字按钮
+.underline { text-decoration-thickness: 1px !important; }
+
+// 通用次要按钮（描边/浅色底）
+.bg-gray-100.px-3, .bg-gray-100.px-4, button.bg-gray-100 { border-radius: 8px !important; }
+
+// ===== Corporate Clean 微交互增强 =====
+// 在企业简洁主题上补全"手感反馈",提升高级感;不加渐变/发光/AI 味
+
+// ---------- 主要按钮:悬浮上浮 + 按下回弹 ----------
+button, .btn, a.bg-blue-500, a.bg-blue-600, .btn-primary, .btn-solid {
+    will-change: transform, box-shadow;
+}
+button:hover, .btn:hover,
+a.bg-blue-500:hover, a.bg-blue-600:hover,
+.btn-primary:hover, .btn-solid:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px -8px rgba(37, 99, 235, .42),
+                0 2px 6px rgba(31, 36, 48, .06) !important;
+}
+button:active, .btn:active,
+a.bg-blue-500:active, a.bg-blue-600:active,
+.btn-primary:active, .btn-solid:active {
+    transform: translateY(0) scale(0.98);
+    filter: none !important;
+    box-shadow: 0 1px 3px rgba(31, 36, 48, .12) !important;
+}
+
+// ---------- 表格行:悬停高亮 ----------
+table tbody tr {
+    transition: background-color .15s ease;
+}
+table tbody tr:hover {
+    background-color: #f7f8fa;
+}
+
+// ---------- 侧边栏导航:激活指示条 + 悬停反馈 ----------
+nav a.h-10 {
+    position: relative;
+}
+nav a.h-10:hover {
+    background-color: #f7f8fa;
+}
+nav a.h-10.bg-blue-50 {
+    background-color: #eff4ff !important;
+    color: #2563eb !important;
+}
+nav a.h-10.bg-blue-50::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    background-color: #2563eb;
+    border-radius: 0 3px 3px 0;
+}
+nav a.h-10.bg-blue-50 i {
+    color: #2563eb !important;
+}
+
+// ---------- 下拉菜单项:细腻悬停 ----------
+[role='menu'] a {
+    transition: background-color .12s ease, color .12s ease;
+}
+
+// ---------- 可访问性:用户偏好减少动态效果时禁用过渡/动画 ----------
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
