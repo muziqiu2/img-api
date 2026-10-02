@@ -20,6 +20,9 @@ return new class extends Migration
             $table->string('token', 64)->unique();
             $table->text('abilities')->nullable();
             $table->timestamp('last_used_at')->nullable();
+            // Sanctum 3/4：token 过期时间（v4 代码必需，缺列会导致
+            // createToken 报 Unknown column 'expires_at'）
+            $table->timestamp('expires_at')->nullable()->index();
             $table->timestamps();
         });
     }

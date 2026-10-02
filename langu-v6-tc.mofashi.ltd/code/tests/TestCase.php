@@ -7,7 +7,8 @@ use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 
 abstract class TestCase extends BaseTestCase
 {
-    use CreatesApplication;
+    // Laravel 11+：不再需要自定义 CreatesApplication trait，
+    // 框架 BaseTestCase 自带 createApplication() 逻辑。
 
     protected array $links = [];
 
