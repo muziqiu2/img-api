@@ -77,8 +77,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: '总调用',
                     data: totalCalls,
-                    borderColor: '#2f6fed',
-                    backgroundColor: 'rgba(47, 111, 237, 0.10)',
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                    borderWidth: 2,
                     tension: 0.3,
                     fill: true,
                     pointRadius: filteredDates.length > 15 ? 2 : 4,
@@ -87,8 +88,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: 'PC端',
                     data: pcCalls,
-                    borderColor: '#1f2733',
+                    borderColor: '#18181b',
                     backgroundColor: 'transparent',
+                    borderWidth: 1.5,
                     tension: 0.3,
                     pointRadius: filteredDates.length > 15 ? 2 : 4,
                     pointHoverRadius: 6
@@ -96,8 +98,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 {
                     label: '移动端',
                     data: peCalls,
-                    borderColor: '#8aa0ba',
+                    borderColor: '#9ca3af',
                     backgroundColor: 'transparent',
+                    borderWidth: 1.5,
                     tension: 0.3,
                     pointRadius: filteredDates.length > 15 ? 2 : 4,
                     pointHoverRadius: 6
@@ -114,10 +117,23 @@ document.addEventListener('DOMContentLoaded', function() {
             plugins: {
                 legend: {
                     position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        boxWidth: 8,
+                        boxHeight: 8,
+                        padding: 16,
+                        color: '#52525b',
+                        font: { size: 12 }
+                    }
                 },
                 tooltip: {
                     mode: 'index',
                     intersect: false,
+                    backgroundColor: '#18181b',
+                    padding: 10,
+                    cornerRadius: 8,
+                    titleFont: { weight: 'bold' },
                     callbacks: {
                         title: function(tooltipItems) {
                             // 显示完整日期
@@ -132,22 +148,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: '调用次数'
+                        text: '调用次数',
+                        color: '#9ca3af'
                     },
+                    border: { color: '#e6e8eb' },
+                    grid: { color: '#f0f1f3' },
                     ticks: {
-                        precision: 0
+                        precision: 0,
+                        color: '#9ca3af'
                     }
                 },
                 x: {
                     title: {
                         display: true,
-                        text: '日期'
+                        text: '日期',
+                        color: '#9ca3af'
                     },
+                    border: { color: '#e6e8eb' },
+                    grid: { display: false },
                     ticks: {
                         maxRotation: 45,
                         minRotation: 0,
                         autoSkip: true,
-                        maxTicksLimit: 15
+                        maxTicksLimit: 15,
+                        color: '#9ca3af'
                     }
                 }
             }
@@ -155,11 +179,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+var toastTimer = null;
 function showToast() {
     const toast = document.getElementById('copyToast');
+    if (!toast) return;
     toast.classList.add('show');
 
-    setTimeout(() => {
+    // 快速连续复制时清掉上一个定时器，避免 toast 被旧的 timeout 提前隐藏
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
         toast.classList.remove('show');
+        toastTimer = null;
     }, 2000);
 }

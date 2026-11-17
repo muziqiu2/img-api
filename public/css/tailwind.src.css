@@ -1,0 +1,54 @@
+/* Tailwind 入口（构建源文件，产物为 public/css/tw.css） */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+    background-image: radial-gradient(circle, #e4e4e7 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
+
+/* ---------- 复制成功 Toast（类名/ID 保持与 home.js 兼容） ---------- */
+.toast-notification {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translate(-50%, 12px);
+  background: #18181b;
+  color: #fff;
+  padding: .6rem 1.1rem;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(24, 24, 27, .16);
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity .25s ease, transform .25s ease;
+  z-index: 1000;
+  pointer-events: none;
+  font-size: .88rem;
+  font-weight: 500;
+}
+.toast-notification i { color: #34d399; margin-right: .5rem; }
+.toast-notification.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------- details/summary 手风琴（原生，替代 Bootstrap collapse） ---------- */
+details.acc > summary { list-style: none; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc[open] > summary { background: #fafafa; }
+details.acc[open] > summary .acc-icon { transform: rotate(180deg); }
+
+/* ---------- 全局键盘焦点环（WCAG 2.4.7） ---------- */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .25);
+  border-radius: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}

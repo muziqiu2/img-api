@@ -159,12 +159,11 @@ if ($mustChangePassword && $currentSection !== 'user') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>魔法师API - 管理后台</title>
+    <link rel="icon" type="image/svg+xml" href="../public/favicon.svg?v=<?php echo APP_VERSION; ?>">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="../public/css/all.min.css?v=<?php echo APP_VERSION; ?>">
-    <!-- Bootstrap 5.3 -->
-    <link rel="stylesheet" href="../public/css/bootstrap.min.css?v=<?php echo APP_VERSION; ?>">
-    <!-- Admin theme -->
-    <link rel="stylesheet" href="../public/css/admin.css?v=<?php echo APP_VERSION; ?>">
+    <!-- Admin theme（Tailwind 编译产物，类名兼容原 Bootstrap 标记） -->
+    <link rel="stylesheet" href="../public/css/admin.tw.css?v=<?php echo APP_VERSION; ?>">
 </head>
 <body class="app-layout" id="appLayout">
 
@@ -174,7 +173,7 @@ if ($mustChangePassword && $currentSection !== 'user') {
             <i class="fas fa-magic ui"></i>
             <span>魔法师API</span>
         </a>
-        <nav class="app-nav">
+        <nav class="app-nav" aria-label="后台主导航">
             <ul class="nav">
                 <li class="nav-item">
                     <a href="?section=management" class="nav-link <?php echo $currentSection === 'management' ? 'active' : ''; ?>">
@@ -242,17 +241,17 @@ if ($mustChangePassword && $currentSection !== 'user') {
                 ?>
             </div>
                 <?php if ($message): ?>
-                <div class="alert alert-<?php echo $messageType === 'error' ? 'danger' : ($messageType === 'warning' ? 'warning' : 'success'); ?> alert-dismissible fade show">
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
+                <div class="alert alert-<?php echo $messageType === 'error' ? 'danger' : ($messageType === 'warning' ? 'warning' : 'success'); ?>">
+                    <button type="button" class="alert-close" data-dismiss-alert aria-label="关闭">&times;</button>
                     <?php echo htmlspecialchars($message); ?>
                 </div>
                 <?php endif; ?>
 
                 <?php if ($mustChangePassword): ?>
-                <div class="alert alert-danger alert-dismissible fade show">
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="关闭"></button>
+                <div class="alert alert-danger">
+                    <button type="button" class="alert-close" data-dismiss-alert aria-label="关闭">&times;</button>
                     <i class="icon fas fa-exclamation-triangle"></i>
-                    <strong>安全警告：</strong>当前仍在使用默认密码（123456），系统已禁止使用其他功能，请立即修改密码！
+                    <span><strong>安全警告：</strong>当前仍在使用默认密码（123456），系统已禁止使用其他功能，请立即修改密码！</span>
                 </div>
                 <?php endif; ?>
 
@@ -283,19 +282,19 @@ if ($mustChangePassword && $currentSection !== 'user') {
                 ?>
             </div>
 
-    <!-- 通用确认弹窗 -->
-<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <!-- 通用确认弹窗（原生实现，无 Bootstrap 依赖） -->
+<div class="modal" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-hidden="true">
+    <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="confirmTitle">确认操作</h5>
-                <button type="button" class="btn-close" id="confirmModalClose" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="modal-close" id="confirmModalClose" aria-label="关闭">&times;</button>
             </div>
             <div class="modal-body">
                 <p id="confirmMessage" class="mb-0">确定要执行此操作吗？</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="confirmModalCancel" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-secondary" id="confirmModalCancel">取消</button>
                 <button type="button" class="btn btn-primary" id="confirmModalYes">确定</button>
             </div>
         </div>
@@ -310,10 +309,6 @@ if ($mustChangePassword && $currentSection !== 'user') {
     </footer>
 </div>
 
-<!-- jQuery -->
-<script src="../public/js/jquery.min.js?v=<?php echo APP_VERSION; ?>"></script>
-<!-- Bootstrap -->
-<script src="../public/js/bootstrap.bundle.min.js?v=<?php echo APP_VERSION; ?>"></script>
 <!-- 自定义确认模态框处理 -->
 <script>
     // APP 配置由 PHP 注入，供外置 public/js/admin.js 读取（csrf/version/section）

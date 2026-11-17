@@ -83,7 +83,7 @@
                         <table class="table table-head-fixed text-nowrap">
                             <thead>
                                 <tr>
-                                    <th style="width: 5%"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                                    <th style="width: 5%"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" aria-label="全选本页图片链接"></th>
                                     <th style="width: 85%">URL</th>
                                     <th style="width: 10%">操作</th>
                                 </tr>
@@ -98,7 +98,7 @@
                                         </a>
                                     </td>
                                     <td>
-                                        <button type="button" class="btn btn-danger btn-sm btn-del-url" data-url="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>" data-type="<?php echo htmlspecialchars($currentType, ENT_QUOTES); ?>">
+                                        <button type="button" class="btn btn-danger btn-sm btn-del-url" data-url="<?php echo htmlspecialchars($url, ENT_QUOTES); ?>" data-type="<?php echo htmlspecialchars($currentType, ENT_QUOTES); ?>" aria-label="删除该图片链接">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
