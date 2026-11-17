@@ -12,26 +12,34 @@ function showToast(message, type) {
     type = type || 'success';
     var container = document.getElementById('appToasts');
     if (!container) return;
-    var icons = { success: 'fa-check-circle', info: 'fa-info-circle', warning: 'fa-exclamation-triangle', error: 'fa-exclamation-circle' };
-    var t = document.createElement('div');
-    t.className = 'app-toast app-toast-' + type;
-    t.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i><span>' + escapeHtml(message) + '</span>' +
-                  '<button type="button" class="app-toast-close" aria-label="关闭">&times;</button>';
-    container.appendChild(t);
-    var hide = function() {
-        if (!t.parentNode) return;
-        t.classList.add('app-toast-hide');
-        setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 300);
+    // 类名必须写字面量（不能用 'app-toast-' + type 拼接），否则 Tailwind 扫描不到、不会生成对应样式
+    var types = {
+        success: { cls: 'app-toast-success', icon: 'fa-check-circle' },
+        info:    { cls: 'app-toast-info',    icon: 'fa-info-circle' },
+        warning: { cls: 'app-toast-warning', icon: 'fa-exclamation-triangle' },
+        error:   { cls: 'app-toast-error',   icon: 'fa-exclamation-circle' }
     };
-    t.querySelector('.app-toast-close').addEventListener('click', hide);
+    var t = types[type] || types.info;
+    var el = document.createElement('div');
+    el.className = 'app-toast ' + t.cls;
+    el.innerHTML = '<i class="fas ' + t.icon + '"></i><span>' + escapeHtml(message) + '</span>' +
+                  '<button type="button" class="app-toast-close" aria-label="关闭">&times;</button>';
+    container.appendChild(el);
+    var hide = function() {
+        if (!el.parentNode) return;
+        el.classList.add('app-toast-hide');
+        setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+    };
+    el.querySelector('.app-toast-close').addEventListener('click', hide);
     setTimeout(hide, 4000);
 }
 
 // ============================================
-// 通用确认弹窗（Promise 化）
+// 通用确认弹窗（Promise 化，原生实现，无 Bootstrap Modal 依赖）
 //   confirmDialog({title, message, confirmText, danger}).then(function(ok){ ... })
 // ============================================
 var confirmResolve = null;
+var confirmModalEl = document.getElementById('confirmModal');
 
 function confirmDialog(options) {
     options = options || {};
@@ -42,16 +50,38 @@ function confirmDialog(options) {
     yesBtn.className = 'btn ' + (options.danger ? 'btn-danger' : 'btn-primary');
     return new Promise(function(resolve) {
         confirmResolve = resolve;
-        bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).show();
+        confirmModalEl.classList.add('modal-show');
+        confirmModalEl.setAttribute('aria-hidden', 'false');
     });
 }
 
 function resolveConfirm(result) {
     var fn = confirmResolve;
     confirmResolve = null;
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmModal')).hide();
+    confirmModalEl.classList.remove('modal-show');
+    confirmModalEl.setAttribute('aria-hidden', 'true');
     if (fn) fn(result);
 }
+
+// 确认/取消/关闭按钮 + 点击遮罩 + ESC 关闭（统一按“取消”处理）
+document.getElementById('confirmModalYes').addEventListener('click', function() { resolveConfirm(true); });
+document.getElementById('confirmModalCancel').addEventListener('click', function() { resolveConfirm(false); });
+document.getElementById('confirmModalClose').addEventListener('click', function() { resolveConfirm(false); });
+confirmModalEl.addEventListener('click', function(e) {
+    if (e.target === confirmModalEl) resolveConfirm(false);
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && confirmModalEl.classList.contains('modal-show')) resolveConfirm(false);
+});
+
+// 警告框关闭按钮（替代 Bootstrap alert-dismissible）
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-dismiss-alert]') : null;
+    if (btn) {
+        var alertEl = btn.closest('.alert');
+        if (alertEl) alertEl.remove();
+    }
+});
 
 // ============================================
 // 图片删除：选中状态与通用确认
@@ -790,7 +820,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // 视口变化：切到桌面端时收起移动端抽屉，切到移动端时移除桌面折叠态
-    document.addEventListener('resize', function () {
+    // 注意：resize 事件只在 window 上触发（document 没有 resize 事件），
+    // 旧代码监听 document 导致视口切换时抽屉/折叠状态不会清理
+    window.addEventListener('resize', function () {
         if (!layout) return;
         if (isMobile()) {
             layout.classList.remove('sidebar-collapsed');
@@ -801,27 +833,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // ============================================
-// jQuery 模态框事件绑定
+// 模态框按钮事件绑定（原生，替代旧 jQuery 绑定）
+// 确认/取消/ESC/遮罩的统一处理已在本文件上方实现
 // ============================================
-$(document).ready(function() {
-    $('#confirmModalYes').on('click', function() {
-        resolveConfirm(true);
-    });
-
-    $('#confirmModalCancel').on('click', function() {
-        resolveConfirm(false);
-    });
-
-    $('#confirmModalClose').on('click', function() {
-        resolveConfirm(false);
-    });
-
-    $('#confirmModal').on('hidden.bs.modal', function() {
-        // 通过 ESC / 点击遮罩关闭而未显式确认时，统一按“取消”处理
-        if (confirmResolve) {
-            var fn = confirmResolve;
-            confirmResolve = null;
-            fn(false);
-        }
-    });
-});

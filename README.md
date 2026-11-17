@@ -1,6 +1,6 @@
 # 魔法师随机图片API
 
-![Version](https://img.shields.io/badge/version-3.2.3.5-blue)
+![Version](https://img.shields.io/badge/version-3.2.3.9-blue)
 ![PHP](https://img.shields.io/badge/PHP-%3E%3D7.4-8892BF)
 ![Storage](https://img.shields.io/badge/storage-SQLite-003B57)
 ![License](https://img.shields.io/badge/license-MIT-green)
